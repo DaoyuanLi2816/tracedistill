@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 1460" width="100%" font-family="'Segoe UI','Microsoft YaHei',system-ui,sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">NVIDIA-NMRC 两阶段微调方案端到端流程图</title>
+  <desc id="d">从数据源、数据切分、样本构造、基座加 LoRA，到 Phase 1 大力训练与 Phase 2 小步精修，再到打包提交与评测的完整流水线。</desc>
+  <style>
+    text { font-family: 'Segoe UI','Microsoft YaHei',system-ui,sans-serif; }
+    .mono { font-family: 'Consolas','Courier New',monospace; }
+  </style>
+  <defs>
+    <marker id="arrow" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#94A3B8"/>
+    </marker>
+    <filter id="soft" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0F172A" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+
+  <!-- background -->
+  <rect x="0" y="0" width="960" height="1460" fill="#FBFCFE"/>
+
+  <!-- header -->
+  <text x="40" y="50" font-size="27" font-weight="700" fill="#0F172A">整套方案一图速览</text>
+  <text x="40" y="78" font-size="13" fill="#64748B">NVIDIA-NMRC · 两阶段微调 Train → Nudge · 数据 → 训练 → 打包 → 评测 端到端</text>
+
+  <!-- legend -->
+  <rect x="636" y="18" width="308" height="84" rx="12" fill="#FFFFFF" stroke="#E2E8F0"/>
+  <text x="652" y="38" font-size="12" font-weight="700" fill="#0F172A">图例</text>
+  <rect x="652" y="48" width="14" height="11" rx="2" fill="#FFF7ED" stroke="#EA580C"/>
+  <text x="672" y="58" font-size="10.5" fill="#475569">Phase 1(Train)</text>
+  <rect x="652" y="68" width="14" height="11" rx="2" fill="#ECFEFF" stroke="#0891B2"/>
+  <text x="672" y="78" font-size="10.5" fill="#475569">Phase 2(Nudge)</text>
+  <rect x="800" y="63" width="14" height="11" rx="2" fill="#FFFFFF" stroke="#94A3B8" stroke-dasharray="3 2"/>
+  <text x="820" y="73" font-size="10.5" fill="#475569">评测端(非本脚本)</text>
+
+  <!-- ① 数据源 -->
+  <rect x="280" y="128" width="400" height="86" rx="14" fill="#F1F5F9" stroke="#CBD5E1" filter="url(#soft)"/>
+  <text x="300" y="156" font-size="14" font-weight="700" fill="#0F172A">① 数据源 · dgxchen/nemotron-cot-tong</text>
+  <text x="300" y="178" font-size="11.5" fill="#475569" class="mono">字段:type / prompt / answer / generated_cot</text>
+  <text x="300" y="198" font-size="11" fill="#64748B">思维链由上游生成 → 本脚本只做「学生端」蒸馏</text>
+
+  <line x1="480" y1="214" x2="480" y2="240" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="492" y="231" font-size="11" fill="#64748B">9500 条样本 · 整体打乱(seed=42)</text>
+
+  <!-- ② 数据切分 -->
+  <rect x="110" y="240" width="740" height="170" rx="16" fill="#F8FAFC" stroke="#CBD5E1"/>
+  <text x="130" y="268" font-size="14" font-weight="700" fill="#0F172A">② 数据切分 · 切成两个互不重叠的集合</text>
+  <text x="130" y="290" font-size="10.5" fill="#64748B" class="mono">HARD_TYPES = { cryptarithm_deduce, cryptarithm_guess, equation_numeric_guess } → 其余为 easy</text>
+
+  <rect x="140" y="304" width="330" height="94" rx="12" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="158" y="328" font-size="13" font-weight="700" fill="#0F172A">Epoch1 集 <tspan font-weight="400" fill="#64748B" font-size="11">(Phase 1 用)</tspan></text>
+  <text x="158" y="352" font-size="11.5" fill="#475569">全部 hard +</text>
+  <text x="158" y="372" font-size="11.5" fill="#475569">剩余 easy(扣掉留给 nudge 的部分)</text>
+
+  <rect x="520" y="304" width="310" height="94" rx="12" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="538" y="328" font-size="13" font-weight="700" fill="#0F172A">Nudge 集 <tspan font-weight="400" fill="#64748B" font-size="11">(Phase 2 用)</tspan></text>
+  <text x="538" y="352" font-size="11.5" fill="#475569">全部 hard + 每个 easy 类型各 n 条</text>
+  <text x="538" y="372" font-size="11" fill="#64748B">n = 最稀缺 hard 类型的题数(类型均衡)</text>
+
+  <line x1="480" y1="410" x2="480" y2="436" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="492" y="427" font-size="11" fill="#64748B">两个集合各自经过 build_records</text>
+
+  <!-- ③ 样本构造 build_records -->
+  <rect x="150" y="436" width="660" height="150" rx="16" fill="#FFFFFF" stroke="#CBD5E1" filter="url(#soft)"/>
+  <text x="172" y="466" font-size="14" font-weight="700" fill="#0F172A">③ 样本构造 build_records — 训练目标的「格式契约」</text>
+  <text x="172" y="488" font-size="11" fill="#64748B">user 端 = 题面 + \boxed 指令后缀(对齐评测);assistant 端 = 下面这条序列:</text>
+
+  <rect x="172" y="500" width="92" height="34" rx="8" fill="#E0E7FF" stroke="#A5B4FC"/>
+  <text x="218" y="522" font-size="12" fill="#3730A3" text-anchor="middle" class="mono">&lt;think&gt;</text>
+  <rect x="270" y="500" width="286" height="34" rx="8" fill="#F1F5F9" stroke="#CBD5E1"/>
+  <text x="413" y="522" font-size="11" fill="#475569" text-anchor="middle">… 上游思维链(已剥掉自带 \boxed)…</text>
+  <rect x="562" y="500" width="96" height="34" rx="8" fill="#DCFCE7" stroke="#86EFAC"/>
+  <text x="610" y="522" font-size="12" fill="#166534" text-anchor="middle" class="mono">&lt;/think&gt;</text>
+  <rect x="664" y="500" width="124" height="34" rx="8" fill="#FEF9C3" stroke="#FDE047"/>
+  <text x="726" y="521" font-size="11.5" fill="#854D0E" text-anchor="middle" class="mono">\boxed{答案}</text>
+
+  <text x="218" y="552" font-size="10.5" fill="#6366F1" text-anchor="middle">▲ 模板自动加</text>
+  <text x="413" y="552" font-size="10.5" fill="#64748B" text-anchor="middle">▲ 过程信上游,剥掉原 \boxed</text>
+  <text x="610" y="552" font-size="10.5" fill="#16A34A" text-anchor="middle">▲ 手动补</text>
+  <text x="726" y="552" font-size="10.5" fill="#CA8A04" text-anchor="middle">▲ 用官方答案重拼</text>
+  <text x="172" y="574" font-size="10.5" fill="#94A3B8">套用对话模板 apply_chat_template(enable_thinking=True) → 这个结构必须逐字等于评测协议</text>
+
+  <line x1="480" y1="586" x2="480" y2="612" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- ④ 基座 + LoRA -->
+  <rect x="230" y="612" width="500" height="96" rx="14" fill="#F1F5F9" stroke="#CBD5E1" filter="url(#soft)"/>
+  <rect x="250" y="625" width="46" height="22" rx="11" fill="#475569"/>
+  <text x="273" y="640" font-size="11" fill="#FFFFFF" text-anchor="middle">模型</text>
+  <text x="306" y="642" font-size="14" font-weight="700" fill="#0F172A">④ 基座模型 + 挂 LoRA</text>
+  <text x="250" y="670" font-size="11.5" fill="#475569">Nemotron-3-Nano-30B-A3B-BF16 · 混合 Mamba / MoE · 激活 ~3.5B</text>
+  <text x="250" y="692" font-size="11.5" fill="#475569" class="mono">LoRA rank=32 alpha=32 dropout=0 · target 含 Mamba 的 in/out_proj</text>
+
+  <line x1="480" y1="708" x2="480" y2="732" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- ⑤ 两阶段微调 container -->
+  <rect x="90" y="732" width="780" height="470" rx="20" fill="#FCFDFE" stroke="#CBD5E1" stroke-width="1.5"/>
+  <text x="112" y="762" font-size="15" font-weight="700" fill="#334155">⑤ 两阶段微调 · Train → Nudge<tspan font-weight="400" fill="#94A3B8" font-size="11.5">(本方案最精妙处:先大力糙训,再小步精修)</tspan></text>
+
+  <!-- Phase 1 -->
+  <rect x="120" y="776" width="720" height="166" rx="16" fill="#FFF7ED" stroke="#FDBA74" filter="url(#soft)"/>
+  <rect x="140" y="790" width="150" height="26" rx="13" fill="#EA580C"/>
+  <text x="215" y="808" font-size="12.5" font-weight="700" fill="#FFFFFF" text-anchor="middle">Phase 1 · Train</text>
+  <text x="304" y="808" font-size="12" fill="#C2410C">大力糙训 · 管覆盖与速度</text>
+  <text x="140" y="850" font-size="12.5" font-weight="700" fill="#9A3412">模型</text>
+  <text x="214" y="850" font-size="12.5" fill="#334155">基座(冻结)+ 全新 LoRA(随机初始化,仅此可训)</text>
+  <text x="140" y="888" font-size="12.5" font-weight="700" fill="#9A3412">输入</text>
+  <text x="214" y="888" font-size="12.5" fill="#334155">Epoch1 集 = 全部 hard + 大部分 easy</text>
+  <text x="140" y="926" font-size="12.5" font-weight="700" fill="#9A3412">输出</text>
+  <text x="214" y="926" font-size="12.5" fill="#334155">Phase 1 adapter<tspan fill="#64748B">(单独存档 → 可作单阶段对照)</tspan></text>
+
+  <!-- arrow between phases -->
+  <line x1="480" y1="942" x2="480" y2="984" stroke="#475569" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <text x="496" y="967" font-size="11.5" font-weight="600" fill="#475569">LoRA 权重接续,不重载 · 在同一个 model 上继续训</text>
+
+  <!-- Phase 2 -->
+  <rect x="120" y="984" width="720" height="166" rx="16" fill="#ECFEFF" stroke="#67E8F9" filter="url(#soft)"/>
+  <rect x="140" y="998" width="156" height="26" rx="13" fill="#0891B2"/>
+  <text x="218" y="1016" font-size="12.5" font-weight="700" fill="#FFFFFF" text-anchor="middle">Phase 2 · Nudge</text>
+  <text x="310" y="1016" font-size="12" fill="#0E7490">小步精修 · 压难题 + 防遗忘</text>
+  <text x="140" y="1058" font-size="12.5" font-weight="700" fill="#155E75">模型</text>
+  <text x="214" y="1058" font-size="12.5" fill="#334155">基座(冻结)+ Phase 1 LoRA(续训,不重载)</text>
+  <text x="140" y="1096" font-size="12.5" font-weight="700" fill="#155E75">输入</text>
+  <text x="214" y="1096" font-size="12.5" fill="#334155">Nudge 集 = 全部 hard + 每类 easy 各 n 条(均衡)</text>
+  <text x="140" y="1134" font-size="12.5" font-weight="700" fill="#155E75">输出</text>
+  <text x="214" y="1134" font-size="12.5" font-weight="700" fill="#0F766E">最终 adapter</text>
+
+  <line x1="480" y1="1202" x2="480" y2="1228" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="492" y="1219" font-size="11" fill="#64748B">最终 adapter</text>
+
+  <!-- ⑥ 打包 -->
+  <rect x="200" y="1228" width="560" height="94" rx="14" fill="#ECFDF5" stroke="#6EE7B7" filter="url(#soft)"/>
+  <rect x="220" y="1241" width="62" height="22" rx="11" fill="#059669"/>
+  <text x="251" y="1256" font-size="11" fill="#FFFFFF" text-anchor="middle">提交物</text>
+  <text x="296" y="1258" font-size="14" font-weight="700" fill="#065F46">⑥ 打包 submission.zip</text>
+  <text x="220" y="1284" font-size="11" fill="#047857">patch adapter_config.json:写回官方基座名 · inference_mode=True · dropout=0</text>
+  <text x="220" y="1305" font-size="11" fill="#047857" class="mono">zip 只含 adapter_config.json + adapter_model.safetensors(不含基座权重)</text>
+
+  <line x1="480" y1="1322" x2="480" y2="1348" stroke="#94A3B8" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arrow)"/>
+  <text x="492" y="1339" font-size="11" fill="#64748B">提交到 Kaggle</text>
+
+  <!-- ⑦ 评测 -->
+  <rect x="230" y="1348" width="500" height="90" rx="14" fill="#FFFFFF" stroke="#94A3B8" stroke-dasharray="6 4"/>
+  <text x="250" y="1376" font-size="13.5" font-weight="700" fill="#334155">⑦ 评测(主办方后台 · 非本脚本)</text>
+  <text x="250" y="1398" font-size="11" fill="#475569">vLLM 加载 基座 + adapter → 每题 greedy 生成(temperature=0)</text>
+  <text x="250" y="1419" font-size="11" fill="#475569">从 &lt;/think&gt; 后的 \boxed{} 抽答案 → 精确匹配 / 相对误差 &lt;1e-2</text>
+</svg>

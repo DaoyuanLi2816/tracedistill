@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" role="img" aria-label="NVIDIA Nemotron Model Reasoning Challenge — Silver Medal Solution">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a0e14"/>
+      <stop offset="1" stop-color="#10161f"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.82" cy="0.25" r="0.6">
+      <stop offset="0" stop-color="#76B900" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#76B900" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="silver" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f4f6f8"/>
+      <stop offset="0.5" stop-color="#c7ccd4"/>
+      <stop offset="1" stop-color="#9aa1ad"/>
+    </linearGradient>
+    <linearGradient id="ribbon" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9aa1ad"/>
+      <stop offset="1" stop-color="#6b7280"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="300" fill="url(#bg)"/>
+  <rect width="1200" height="300" fill="url(#glow)"/>
+  <rect x="0" y="0" width="10" height="300" fill="#76B900"/>
+
+  <!-- Title block -->
+  <text x="60" y="92" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="44" font-weight="700" fill="#e6edf3">NVIDIA Nemotron Model</text>
+  <text x="60" y="146" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="44" font-weight="700" fill="#e6edf3">Reasoning Challenge</text>
+  <text x="62" y="188" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="22" font-weight="600" fill="#76B900">Silver Medal &#183; 65 / 4163 teams &#183; Top 1.6% &#183; Team VCDAD</text>
+
+  <!-- Tag pills -->
+  <g font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="16" font-weight="600">
+    <rect x="60"  y="222" width="206" height="38" rx="19" fill="#15202b" stroke="#2a3441"/>
+    <text x="163" y="247" fill="#c9d1d9" text-anchor="middle">Two-Phase LoRA SFT</text>
+    <rect x="278" y="222" width="226" height="38" rx="19" fill="#15202b" stroke="#2a3441"/>
+    <text x="391" y="247" fill="#c9d1d9" text-anchor="middle">Trace-Distillation</text>
+    <rect x="516" y="222" width="234" height="38" rx="19" fill="#15202b" stroke="#2a3441"/>
+    <text x="633" y="247" fill="#c9d1d9" text-anchor="middle">Mamba-MoE 30B-A3B</text>
+    <rect x="762" y="222" width="132" height="38" rx="19" fill="#15202b" stroke="#2a3441"/>
+    <text x="828" y="247" fill="#c9d1d9" text-anchor="middle">rank &#8804; 32</text>
+  </g>
+
+  <!-- Silver medal motif -->
+  <g transform="translate(1010,120)">
+    <path d="M-46,-96 L-14,-96 L6,-20 L-26,-20 Z" fill="url(#ribbon)"/>
+    <path d="M46,-96 L14,-96 L-6,-20 L26,-20 Z" fill="url(#ribbon)"/>
+    <circle cx="0" cy="34" r="74" fill="url(#silver)" stroke="#7f8794" stroke-width="3"/>
+    <circle cx="0" cy="34" r="58" fill="none" stroke="#8b929e" stroke-width="2" stroke-opacity="0.6"/>
+    <text x="0" y="20" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="17" font-weight="700" fill="#3a3f47" text-anchor="middle">SILVER</text>
+    <text x="0" y="56" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="34" font-weight="800" fill="#2b2f36" text-anchor="middle">65</text>
+  </g>
+</svg>

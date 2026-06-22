@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.ipynb_checkpoints/
+.venv/
+venv/
+env/
+
+# Training / submission artifacts
+*.safetensors
+phase1_output/
+phase2_output/
+phase1_adapter/
+final_adapter/
+submission.zip
+wandb/
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
