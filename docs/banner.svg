@@ -1,63 +1,71 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" role="img" aria-label="tracedistill — distill reasoning traces into a LoRA adapter. Silver medal, NVIDIA Nemotron Model Reasoning Challenge.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 340" role="img" aria-label="tracedistill — distill teacher chains-of-thought into a LoRA adapter so the model re-derives every answer itself. Silver medal, NVIDIA Nemotron Model Reasoning Challenge. Features: a byte-identical format contract, a two-phase Train to Nudge schedule, and Mamba-aware LoRA.">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#0a0e14"/>
-      <stop offset="1" stop-color="#10161f"/>
+      <stop offset="0.6" stop-color="#0c1320"/>
+      <stop offset="1" stop-color="#0e1a14"/>
     </linearGradient>
-    <radialGradient id="glow" cx="0.82" cy="0.25" r="0.6">
-      <stop offset="0" stop-color="#76B900" stop-opacity="0.22"/>
+    <radialGradient id="glow" cx="0.5" cy="0.1" r="0.7">
+      <stop offset="0" stop-color="#76B900" stop-opacity="0.18"/>
       <stop offset="1" stop-color="#76B900" stop-opacity="0"/>
     </radialGradient>
     <linearGradient id="silver" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#f4f6f8"/>
-      <stop offset="0.5" stop-color="#c7ccd4"/>
+      <stop offset="0" stop-color="#eef1f4"/>
       <stop offset="1" stop-color="#9aa1ad"/>
-    </linearGradient>
-    <linearGradient id="ribbon" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#9aa1ad"/>
-      <stop offset="1" stop-color="#6b7280"/>
     </linearGradient>
   </defs>
 
-  <rect width="1200" height="300" fill="url(#bg)"/>
-  <rect width="1200" height="300" fill="url(#glow)"/>
-  <rect x="0" y="0" width="10" height="300" fill="#76B900"/>
+  <rect width="1100" height="340" fill="url(#bg)"/>
+  <rect width="1100" height="340" fill="url(#glow)"/>
+  <circle cx="930" cy="60" r="220" fill="#76B900" opacity="0.05"/>
+  <rect x="0" y="0" width="10" height="340" fill="#76B900"/>
 
-  <!-- Wordmark -->
-  <text x="58" y="96" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="58" font-weight="800">
+  <!-- ============ Left column ============ -->
+  <text x="54" y="118" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="62" font-weight="800">
     <tspan fill="#e6edf3">trace</tspan><tspan fill="#76B900">distill</tspan>
   </text>
-  <!-- Tagline -->
-  <text x="60" y="138" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="22" font-weight="500" fill="#c9d1d9">Distill teacher chains-of-thought into a LoRA adapter —</text>
-  <text x="60" y="168" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="22" font-weight="500" fill="#c9d1d9">so the model re-derives every answer itself.</text>
-  <text x="62" y="200" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#76B900">Silver Medal &#183; 65 / 4163 (Top 1.6%) &#183; NVIDIA Nemotron Reasoning Challenge</text>
 
-  <!-- Stage / feature chips -->
-  <g font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600">
-    <rect x="60"  y="224" width="178" height="36" rx="18" fill="#15202b" stroke="#2a3441"/>
-    <text x="149" y="248" fill="#c9d1d9" text-anchor="middle">&#60;think&#62;…&#62;\boxed{}</text>
-    <rect x="250" y="224" width="168" height="36" rx="18" fill="#15202b" stroke="#2a3441"/>
-    <text x="334" y="248" fill="#c9d1d9" text-anchor="middle">Train &#8594; Nudge</text>
-    <rect x="430" y="224" width="156" height="36" rx="18" fill="#15202b" stroke="#2a3441"/>
-    <text x="508" y="248" fill="#c9d1d9" text-anchor="middle">type-stratified</text>
-    <rect x="598" y="224" width="158" height="36" rx="18" fill="#15202b" stroke="#2a3441"/>
-    <text x="677" y="248" fill="#c9d1d9" text-anchor="middle">Mamba-aware</text>
-  </g>
+  <text x="56" y="160" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="19" fill="#c2cad4">Distill chains-of-thought into a LoRA adapter —</text>
+  <text x="56" y="186" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="19" fill="#c2cad4">so the model re-derives every answer itself.</text>
+
+  <!-- silver-medal credential pill -->
+  <rect x="56" y="212" width="452" height="36" rx="18" fill="#141d29" stroke="#283648"/>
+  <circle cx="80" cy="230" r="9" fill="url(#silver)" stroke="#7f8794"/>
+  <text x="97" y="235" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="14.5" font-weight="600" fill="#cbd3dd">Silver Medal · 65 / 4182 (Top 1.6%) · NVIDIA Nemotron Reasoning</text>
 
   <!-- pip install pill -->
-  <g font-family="'JetBrains Mono', 'Consolas', monospace" font-size="15">
-    <rect x="60" y="270" width="250" height="22" rx="6" fill="#0d1117" stroke="#2a3441"/>
-    <text x="72" y="285" fill="#8b949e">$ </text>
-    <text x="86" y="285" fill="#e6edf3">pip install tracedistill</text>
+  <rect x="56" y="262" width="268" height="34" rx="8" fill="#0c1117" stroke="#283648"/>
+  <text x="74" y="284" font-family="'JetBrains Mono', 'Consolas', monospace" font-size="15" fill="#6e7a89">$</text>
+  <text x="92" y="284" font-family="'JetBrains Mono', 'Consolas', monospace" font-size="15" fill="#e6edf3">pip install tracedistill</text>
+
+  <!-- ============ Right column: 3 feature cards ============ -->
+  <!-- card 1 -->
+  <g>
+    <rect x="560" y="40" width="500" height="82" rx="12" fill="#131c28" stroke="#243240"/>
+    <circle cx="600" cy="81" r="20" fill="#18250f" stroke="#3f6118"/>
+    <text x="600" y="87" font-family="'JetBrains Mono', monospace" font-size="19" font-weight="700" fill="#76B900" text-anchor="middle">{ }</text>
+    <text x="636" y="74" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" font-weight="700" fill="#e6edf3">Format contract</text>
+    <text x="636" y="98" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="13.5" fill="#93a1b0">&#60;think&#62;…&#60;/think&#62;\boxed{} — byte-identical to the grader</text>
+  </g>
+  <!-- card 2 -->
+  <g>
+    <rect x="560" y="130" width="500" height="82" rx="12" fill="#131c28" stroke="#243240"/>
+    <circle cx="600" cy="171" r="20" fill="#18250f" stroke="#3f6118"/>
+    <text x="600" y="178" font-family="'JetBrains Mono', monospace" font-size="20" font-weight="700" fill="#76B900" text-anchor="middle">»</text>
+    <text x="636" y="164" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" font-weight="700" fill="#e6edf3">Train → Nudge</text>
+    <text x="636" y="188" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="13.5" fill="#93a1b0">two-phase: broad coverage fast, then nudge the hard types</text>
+  </g>
+  <!-- card 3 -->
+  <g>
+    <rect x="560" y="220" width="500" height="82" rx="12" fill="#131c28" stroke="#243240"/>
+    <circle cx="600" cy="261" r="20" fill="#18250f" stroke="#3f6118"/>
+    <text x="600" y="268" font-family="'JetBrains Mono', monospace" font-size="20" font-weight="700" fill="#76B900" text-anchor="middle">≈</text>
+    <text x="636" y="254" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" font-weight="700" fill="#e6edf3">Mamba-aware LoRA</text>
+    <text x="636" y="278" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="13.5" fill="#93a1b0">targets the SSM in_proj/out_proj + attention + MLP</text>
   </g>
 
-  <!-- Silver medal motif (credential) -->
-  <g transform="translate(1040,118)">
-    <path d="M-46,-96 L-14,-96 L6,-20 L-26,-20 Z" fill="url(#ribbon)"/>
-    <path d="M46,-96 L14,-96 L-6,-20 L26,-20 Z" fill="url(#ribbon)"/>
-    <circle cx="0" cy="34" r="74" fill="url(#silver)" stroke="#7f8794" stroke-width="3"/>
-    <circle cx="0" cy="34" r="58" fill="none" stroke="#8b929e" stroke-width="2" stroke-opacity="0.6"/>
-    <text x="0" y="20" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="17" font-weight="700" fill="#3a3f47" text-anchor="middle">SILVER</text>
-    <text x="0" y="56" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="34" font-weight="800" fill="#2b2f36" text-anchor="middle">65</text>
+  <!-- bottom stage chips -->
+  <g font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#7d8794">
+    <text x="56" y="322">golden-tested · pip-installable · type-stratified · NEFTune · pure BF16</text>
   </g>
 </svg>

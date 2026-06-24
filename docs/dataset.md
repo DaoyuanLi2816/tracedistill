@@ -1,97 +1,96 @@
-# NVIDIA Nemotron 推理挑战赛 —— 数据集详解
+# NVIDIA Nemotron Reasoning Challenge — A Deep Dive into the Dataset
 
 ---
 
-## 0. 一分钟速览
+## 0. One-Minute Overview
 
-- 这是一道 **"程序生成的推理谜题"** 数据集:每道题给你几组 `输入 → 输出` 示例,让你**反推隐藏的变换规则**,再把规则应用到最后一个待解的 query 上。
-- 题面里的"故事包装"(Alice's Wonderland 之类)和**算子符号的视觉含义**几乎都是**对抗性噪声**,要训练模型无视它们。
-- 训练集 **9500 道**,分 **7 大类**(细分 9 小类)。其中约 **84% 是送分题**,真正决定排名的是最后两类:**bit manipulation(位运算)** 和 **cryptarithm(密码算术)**。
-- 你交的不是预测结果,而是一个 **LoRA adapter**;评测时模型要在 **7680 token** 的思维链里**自己把题算出来**(评测环境不能跑代码)。
+- This is a dataset of **"programmatically generated reasoning puzzles"**: each problem gives you a few `input → output` examples, asks you to **reverse-engineer the hidden transformation rule**, and then apply that rule to a final unsolved query.
+- The "story wrapping" in the problem statements (things like Alice's Wonderland) and the **visual meaning of the operator symbols** are almost entirely **adversarial noise** — the model must be trained to ignore them.
+- The training set has **9,500 problems**, split into **7 major families** (subdivided into 9 subtypes). About **84% are free points**; what actually decides your ranking are the last two families: **bit manipulation** and **cryptarithm**.
+- You don't submit predictions — you submit a **LoRA adapter**. At evaluation time the model has to **work out each problem on its own** within a **7,680-token** chain of thought (the evaluation environment can't run code).
 
 ---
 
-## 1. 数据集整体情况
+## 1. The Dataset at a Glance
 
-### 1.1 字段(train.csv)
+### 1.1 Fields (train.csv)
 
-官方训练集 `train.csv` 只有 **3 列**:
+The official training set `train.csv` has only **3 columns**:
 
-| 列名 | 含义 |
+| Column | Meaning |
 |---|---|
-| `id` | 题目唯一标识符 |
-| `prompt` | 题面:包含若干「输入→输出」示例 + 一个待解的 query |
-| `answer` | 标准答案 |
+| `id` | Unique identifier for the problem |
+| `prompt` | The problem statement: several "input → output" examples + one unsolved query |
+| `answer` | The ground-truth answer |
 
-⚠️ **注意:官方 `train.csv` 里没有"题目类别"这一列。** 题目属于哪一类、隐藏规则是什么,**全部要选手自己逆向**。"把这 9500 道题分门别类、摸清每类套路"本身就是比赛的第一关。
+⚠️ **Note: the official `train.csv` has no "problem category" column.** Which family a problem belongs to, and what its hidden rule is, **must all be reverse-engineered by the competitor**. "Sorting these 9,500 problems into families and figuring out the playbook for each" is itself the first hurdle of the competition.
 
-> 你在 `solution/training.py` 里会看到一个 `type` 列,那来自社区第三方逆向后整理的数据集
-> (`dgxchen/nemotron-cot-tong`),**不是官方原始字段**。
+> In `solution/training.py` you'll see a `type` column — that comes from a community-curated, third-party reverse-engineered dataset
+> (`dgxchen/nemotron-cot-tong`), and is **not an original official field**.
 
-### 1.2 训练集规模与类别分布
+### 1.2 Training Set Size and Category Distribution
 
-训练集共 **9500 道**。按第 1 名对 `train.csv` 的统计,大致分布如下:
+The training set contains **9,500 problems** in total. Based on the 1st-place competitor's analysis of `train.csv`, the rough distribution is:
 
-| 类别 | 数量 | 顶尖方案大致可解率 | 性质 |
+| Category | Count | Approx. solve rate (top solutions) | Nature |
 |---|---:|---:|---|
-| bit manipulation(位运算) | 1602 | ~93–97% | ⭐ 战场之一 |
-| text cipher(文字密码) | 1576 | ~99–100% | 送分 |
-| numeral system(数字系统/罗马数字) | 1576 | 100% | 送分 |
-| unit conversion(单位换算) | 1594 | 100% | 送分 |
-| gravity(重力) | 1597 | 100% | 送分 |
-| equation numeric(数字方程) | 732(deduce 596 + guess 136) | deduce ~95% / guess ~50% | 中 |
-| cryptarithm(密码算术) | 823(deduce 659 + guess 164) | deduce ~30% / guess ~10% | ⭐⭐ 最终决胜 |
-| **合计** | **9500** | | |
+| bit manipulation | 1602 | ~93–97% | ⭐ one of the battlegrounds |
+| text cipher | 1576 | ~99–100% | free points |
+| numeral system (Roman numerals) | 1576 | 100% | free points |
+| unit conversion | 1594 | 100% | free points |
+| gravity | 1597 | 100% | free points |
+| equation numeric | 732 (deduce 596 + guess 136) | deduce ~95% / guess ~50% | medium |
+| cryptarithm | 823 (deduce 659 + guess 164) | deduce ~30% / guess ~10% | ⭐⭐ the decider |
+| **Total** | **9500** | | |
 
-**怎么读这张表:**
-- 前 5 类(bit 之外的简单类 + bit 的简单部分)加起来约 7945 道(≈84%),基本人人都能做到接近满分,这部分大概就值 **0.85~0.86** 分。
-- 这就是榜单上那堵 **"0.86 的墙"** 的来源:简单类满分就这么多,大家挤在一起,拉不开差距。
-- **0.86 → 0.89 的那 3 个百分点,几乎全部来自 cryptarithm 和 bit manipulation。** 顶尖队伍的全部精力都花在这两类上。
+**How to read this table:**
+- The first five families (the simple families other than bit, plus the easy portion of bit) add up to roughly 7,945 problems (≈84%). Essentially everyone can get close to a perfect score here, and this portion is worth about **0.85–0.86** of the score.
+- This is where the **"0.86 wall"** on the leaderboard comes from: the easy families cap out at this many points, so everyone piles up together with no separation.
+- **The 3 points from 0.86 → 0.89 come almost entirely from cryptarithm and bit manipulation.** Top teams spend all of their effort on these two families.
 
-### 1.3 测试集:数量与分布(重点澄清)
+### 1.3 The Test Set: Size and Distribution (Important Clarifications)
 
-这部分官方信息不多,我把"确定的"和"只能推断的"分开讲:
+The official information here is thin, so I'll separate what's **certain** from what can only be **inferred**:
 
-**确定的事实:**
-- 比赛里另给了一个 `test.csv`,但它**只是几道样例题,用来调试提交格式**。正式评分时会被换成**完整的隐藏测试集**。
-- 完整测试集规模:官方表述是 **"数百道题"(hundreds)**。主办方在论坛里解释,他们**故意保留了足够多的测试样本**,以减少评分的不稳定性;代价是**评一个 adapter 要约 2 小时**。
-  - (社区有人猜测量级在 ~600 题左右,但这是猜测,官方未给出确切数字。)
-- 测试集分 **Public LB(比赛中可见)** 和 **Private LB(最终排名)** 两部分。主办方多次强调:**真正决定排名的是 Private LB,只盯 Public LB 容易过拟合**。
-- 评分**有随机性**:即使提交**完全相同**的 adapter,多次得分也会小幅波动(temperature=0 但 MoE 路由 + 浮点导致 vLLM 推理不完全确定)。
+**Established facts:**
+- The competition also ships a `test.csv`, but it's **just a handful of sample problems for debugging your submission format**. During real scoring it is swapped out for the **full hidden test set**.
+- Full test set size: the official wording is **"hundreds of problems."** The organizers explained on the forum that they **deliberately kept enough test samples** to reduce scoring variance; the cost is that **evaluating one adapter takes about 2 hours**.
+  - (Some in the community guessed the magnitude is around ~600 problems, but that's a guess — the organizers never gave an exact number.)
+- The test set is split into a **Public LB (visible during the competition)** and a **Private LB (final ranking)**. The organizers repeatedly stressed: **the Private LB is what actually decides the ranking, and fixating on the Public LB invites overfitting.**
+- Scoring **has randomness**: even submitting the **exact same** adapter, repeated runs will fluctuate slightly (temperature=0, but MoE routing + floating point make vLLM inference not fully deterministic).
 
-**⭐ 每道题跑几遍?—— 只有一次,一锤定音。**
-- 评测时 vLLM 用 `temperature=0.0`(贪心)对**每道题只生成一次**,从这唯一一次输出里抠 `\boxed{}` 判对错。
-  **没有重试,没有多次采样。**
-- 因此你**无法在评测端做 self-consistency(多次采样投票)**:温度是 0,解码流程由主办方控制,你只能交 adapter。
-- 表中的 `max_num_seqs=64` 只是 vLLM 的**批处理并发数**(一次并行处理 64 道不同的题),**不是"每题做 64 遍"**。
-- "同一 adapter 多交几次分数会抖"指的是**两次独立评测之间**的抖动,**不是**同一次评测里对一道题重试。对单题而言,永远一次定生死。
-- **策略推论:** 既然评测端不能投票,"验证 / 纠错"就必须**写进思维链里**——让模型在 7680 token 内**自己验算、
-  发现矛盾再回退**(这正是各方案里 `VER`、`CHK`、DFS 回溯反复出现的原因)。模型只有一发子弹,得自己瞄准。
+**⭐ How many times is each problem run? — Just once. One shot, one chance.**
+- At evaluation time vLLM uses `temperature=0.0` (greedy) and **generates exactly one output per problem**, then extracts `\boxed{}` from that single output to judge correctness.
+  **No retries, no multiple sampling.**
+- This means you **cannot do self-consistency (sample-and-vote) on the evaluation side**: the temperature is 0, the decoding pipeline is controlled by the organizers, and all you can submit is an adapter.
+- The `max_num_seqs=64` in the config is just vLLM's **batch concurrency** (processing 64 different problems in parallel at once) — it is **not "doing each problem 64 times."**
+- "The score wobbles when you resubmit the same adapter" refers to wobble **between two independent evaluation runs**, **not** retrying a single problem within one run. For any individual problem, it's always one shot, life or death.
+- **Strategic implication:** since the evaluation side can't vote, "verification / self-correction" must be **written into the chain of thought** — the model has to **check its own work within 7,680 tokens, and backtrack when it finds a contradiction** (this is exactly why `VER`, `CHK`, and DFS backtracking show up again and again across the solutions). The model gets only one bullet, so it has to aim itself.
 
-**关于"测试集的类别分布是否和训练集一致":**
-- 官方**没有公布**测试集的类别分布。
-- 但有**强证据**表明它与训练集分布**高度接近**:
-  1. 测试题和训练题出自**同一个程序化"工厂"**(同样的模板和规则库),没有理由换配方。
-  2. 第 3 名报告:他从训练集分层抽出的**本地验证集(local CV)**,其分数与 **Private LB 高度相关**(散点几乎成一条线)。如果测试集分布与训练集差异很大,这种相关性不会成立。
-  3. 主办方也直接建议选手"**靠 local CV 评估 adapter**",这等于默认了"训练集分布 ≈ 测试集分布"。
-- **结论(推断,非官方):** 可以**安全地假设测试集的类别分布与训练集基本一致**——即同样是"简单类占大头、cryptarithm/bit 决定上限"。这也是所有顶尖方案的共同前提:用训练集分层做 CV,直接对标 Private LB。
-
----
-
-## 2. 七大类题型逐一详解
-
-> 每类给出:**真实英文题面 + 中文翻译 + 标准答案 + 隐藏规则 + 难点**。
-> 所有示例均取自比赛论坛中公开的真实题目。
-
-数据集的**通用结构**(每类都一样,先记住):
-> **示例(examples)用来反推隐藏参数/规则;最后的 query 用来考你应用。**
-> 同一道题里的所有示例共享同一套隐藏规则。
+**On whether "the test set's category distribution matches the training set":**
+- The organizers **never published** the test set's category distribution.
+- But there is **strong evidence** that it is **very close** to the training distribution:
+  1. The test and training problems come from the **same programmatic "factory"** (the same templates and rule library) — there's no reason to change the recipe.
+  2. The 3rd-place report: the **local validation set (local CV)** he stratified-sampled from the training set was **highly correlated with the Private LB** (the scatter plot was almost a straight line). If the test distribution differed greatly from the training set, this correlation wouldn't hold.
+  3. The organizers also directly advised competitors to "**evaluate your adapter via local CV**," which amounts to tacitly admitting "training distribution ≈ test distribution."
+- **Conclusion (inferred, not official):** you can **safely assume the test set's category distribution is essentially the same as the training set's** — i.e., easy families dominate, and cryptarithm/bit set the ceiling. This is the shared premise of all top solutions: use a stratified CV from the training set and read it directly as a proxy for the Private LB.
 
 ---
 
-### 2.1 gravity(重力)—— 送分题,但能教你看懂"工厂"套路
+## 2. The Seven Puzzle Families, One by One
 
-**英文题面:**
+> For each family: **the real English problem statement + translation + ground-truth answer + hidden rule + the hard part.**
+> All examples are taken from real problems shared publicly on the competition forum.
+
+The **common structure** of the dataset (the same for every family — memorize this first):
+> **The examples are used to reverse-engineer the hidden parameters/rule; the final query tests whether you can apply it.**
+> All examples within a single problem share the same hidden rule.
+
+---
+
+### 2.1 gravity — A free-points family, but it teaches you the "factory" playbook
+
+**English problem statement:**
 ```
 In Alice's Wonderland, the gravitational constant has been secretly changed.
 Here are some example observations:
@@ -103,33 +102,21 @@ For t = 1.78s, distance = 25.19 m
 Now, determine the falling distance for t = 4.41s given d = 0.5*g*t^2.
 ```
 
-**中文翻译:**
-```
-在爱丽丝的仙境里,重力常数被偷偷改变了。
-以下是一些观测示例:
-当 t = 1.37s 时,距离 = 14.92 m
-当 t = 4.27s 时,距离 = 144.96 m
-当 t = 3.28s 时,距离 = 85.54 m
-当 t = 3.67s 时,距离 = 107.09 m
-当 t = 1.78s 时,距离 = 25.19 m
-已知 d = 0.5*g*t^2,求 t = 4.41s 时的下落距离。
-```
+**Ground-truth answer:** `154.62`
 
-**标准答案:** `154.62`
+**Hidden rule:** the formula is handed to you directly as `d = 0.5·g·t²`, but `g` is random per problem. Solve for it from any example,
+`g = 2d/t²` (≈ 15.90 here), then substitute back: `0.5 × 15.90 × 4.41² ≈ 154.62`.
 
-**隐藏规则:** 公式直接白给 `d = 0.5·g·t²`,但 `g` 每题随机。从任一示例反解
-`g = 2d/t²`(本题 ≈ 15.90),代回 `0.5 × 15.90 × 4.41² ≈ 154.62`。
-
-**它教你的三件事(适用于所有类别):**
-1. "爱丽丝仙境""secretly changed"是**纯包装废话**,无视。
-2. 同一题所有示例共享同一个隐藏参数(这里是 g)。
-3. 数值题有 **1e-2 容差**,算到两位小数即可,但答案要 **`X.XX` 格式**。
+**Three things it teaches you (applicable to every family):**
+1. "Alice's Wonderland" and "secretly changed" are **pure filler** — ignore them.
+2. All examples in one problem share the same hidden parameter (here, g).
+3. Numeric problems have a **1e-2 tolerance**: computing to two decimal places is enough, but the answer must be in **`X.XX` format**.
 
 ---
 
-### 2.2 unit conversion(单位换算)—— 与重力同构,但是线性关系
+### 2.2 unit conversion — Isomorphic to gravity, but a linear relationship
 
-**英文题面:**
+**English problem statement:**
 ```
 In Alice's Wonderland, a secret unit conversion is applied to measurements.
 10.08 m becomes 6.69
@@ -140,27 +127,16 @@ In Alice's Wonderland, a secret unit conversion is applied to measurements.
 Now, convert the following measurement: 25.09 m
 ```
 
-**中文翻译:**
-```
-在爱丽丝的仙境里,对测量值施加了一种秘密的单位换算。
-10.08 m 变成 6.69
-17.83 m 变成 11.83
-35.85 m 变成 23.79
-17.06 m 变成 11.32
-31.54 m 变成 20.93
-现在,换算下面这个测量值:25.09 m
-```
+**Ground-truth answer:** `16.65`
 
-**标准答案:** `16.65`
-
-**隐藏规则:** `输出 = 输入 × 系数`,系数每题随机。`6.69/10.08 ≈ 0.6636`,
-验证几个示例一致后,`25.09 × 0.6636 ≈ 16.65`。结构与重力完全相同,只是关系从平方变成线性。
+**Hidden rule:** `output = input × coefficient`, with the coefficient random per problem. `6.69/10.08 ≈ 0.6636`;
+after confirming a few examples agree, `25.09 × 0.6636 ≈ 16.65`. The structure is identical to gravity — only the relationship changes from quadratic to linear.
 
 ---
 
-### 2.3 numeral system(数字系统)—— 整数 → 罗马数字
+### 2.3 numeral system — Integer → Roman numerals
 
-**英文题面:**
+**English problem statement:**
 ```
 In Alice's Wonderland, numbers are secretly converted into a different numeral system.
 11 -> XI
@@ -170,28 +146,18 @@ In Alice's Wonderland, numbers are secretly converted into a different numeral s
 Now, write the number 38 in the Wonderland numeral system.
 ```
 
-**中文翻译:**
-```
-在爱丽丝的仙境里,数字被秘密转换成另一种计数系统。
-11 -> XI
-15 -> XV
-94 -> XCIV
-19 -> XIX
-现在,用仙境的计数系统写出数字 38。
-```
+**Ground-truth answer:** `XXXVIII`
 
-**标准答案:** `XXXVIII`
+**Hidden rule:** it's just standard Roman numerals. Decompose digit by digit: `38 = 30 + 8` → `XXX` + `VIII` → `XXXVIII`.
 
-**隐藏规则:** 就是标准罗马数字。按位拆 `38 = 30 + 8` → `XXX` + `VIII` → `XXXVIII`。
-
-**难点:** 这是**字符串题,必须一字不差**(罗马数字才有 1e-2 容差里救不回来的风险)。
-所以方案里会让模型"逐位拆 → 拼接 → 再回读验证",防止把 `XL` 写成 `LX` 这类顺序错误。
+**The hard part:** this is a **string problem — it must be character-for-character exact** (Roman numerals carry the risk of an error the 1e-2 tolerance can't rescue).
+So the solutions have the model "decompose digit by digit → concatenate → read back to verify," preventing ordering errors like writing `XL` as `LX`.
 
 ---
 
-### 2.4 text cipher(文字密码)—— 单词级字母替换密码
+### 2.4 text cipher — A word-level letter-substitution cipher
 
-**英文题面:**
+**English problem statement:**
 ```
 In Alice's Wonderland, secret encryption rules are used on text.
 hmxad apdhvdq vid ohexahm apwqvhm -> alice creates the magical crystal
@@ -202,33 +168,22 @@ vid amdtdp zxuhpl dgjmspdq -> the clever wizard explores
 Now, decrypt the following text: bxye aihqdq ahqvmd
 ```
 
-**中文翻译:**
-```
-在爱丽丝的仙境里,对文本使用了秘密的加密规则。
-hmxad apdhvdq vid ohexahm apwqvhm -> alice creates the magical crystal(爱丽丝创造了魔法水晶)
-zxuhpl zhvaidq xyqxld txmmhed -> wizard watches inside village(巫师注视着村庄内部)
-nfddy xohexydq xy ehpldy -> queen imagines in garden(女王在花园里想象)
-osfqd qddq lssp -> mouse sees door(老鼠看见门)
-vid amdtdp zxuhpl dgjmspdq -> the clever wizard explores(聪明的巫师在探索)
-现在,解密下面这段文本:bxye aihqdq ahqvmd
-```
+**Ground-truth answer:** `king chases castle`
 
-**标准答案:** `king chases castle`(国王追逐城堡)
+**Hidden rule:** a **bijective substitution** over the 26 letters (each letter maps to a fixed other letter).
+From `hmxad → alice` you can extract `h→a, m→l, x→i, a→c, d→e`… Collect the mappings from all examples and decrypt the query character by character.
 
-**隐藏规则:** 26 个字母的**双射替换**(每个字母固定映射到另一个字母)。
-从 `hmxad → alice` 能抠出 `h→a, m→l, x→i, a→c, d→e`……把所有示例的映射收集起来,逐字符解密 query。
-
-**精妙点 ——「封闭词表」:**
-- query 里 `bxye` 解出来是 `?ing`(字母 `b` 在示例里从没出现过,映射未知)。
-- 解法:**整个数据集的明文只用了 77 个固定单词**(社区逆向出来的)。所以不是在全英语词典里找 `?ing`,
-  而是在这 77 个词里找符合 `?ing` 的——只有 `king`。于是反推出 `b→k`。
-- 这种"**把开放搜索锁成封闭搜索**"的思路,在难类里会被放大成核心武器。
+**The clever bit — the "closed vocabulary":**
+- In the query, `bxye` decrypts to `?ing` (the letter `b` never appears in the examples, so its mapping is unknown).
+- The trick: **the entire dataset's plaintext uses only 77 fixed words** (reverse-engineered by the community). So instead of searching the whole English dictionary for `?ing`,
+  you search those 77 words for one matching `?ing` — and the only one is `king`. From this you infer `b→k`.
+- This idea of **"locking an open search into a closed search"** gets amplified into a core weapon in the harder families.
 
 ---
 
-### 2.5 bit manipulation(位运算)—— 第一个真正的战场
+### 2.5 bit manipulation — The first real battleground
 
-**英文题面:**
+**English problem statement:**
 ```
 In Alice's Wonderland, a secret bit manipulation rule transforms 8-bit binary numbers.
 The transformation involves operations like bit shifts, rotations, XOR, AND, OR, NOT,
@@ -238,49 +193,36 @@ and possibly majority or choice functions.
 11000101 -> 01111000
 00011010 -> 10100011
 01010110 -> 00000011
-... (约 10 个示例)
+... (about 10 examples)
 Now, determine the output for: 01101001
 ```
 
-**中文翻译:**
+**Ground-truth answer:** `10001101`
+
+**Hidden rule (the actual transformation for this problem):**
 ```
-在爱丽丝的仙境里,一条秘密的位运算规则会变换 8 位二进制数。
-这种变换涉及位移、循环移位、XOR、AND、OR、NOT,可能还有多数函数(majority)或选择函数(choice)。
-00010101 -> 10000011
-01100011 -> 10111001
-11000101 -> 01111000
-00011010 -> 10100011
-01010110 -> 00000011
-... (约 10 个示例)
-现在,求下面这个输入的输出:01101001
+s = not(rol1(x))    # rotate left by 1 bit, then NOT
+a = not(shr3(x))    # shift right by 3 bits, then NOT
+b = shl2(x)         # shift left by 2 bits
+out = sel_nand_xnor(s, a, b)   # bits where s is 1 use nand(a,b); bits where s is 0 use xnor(a,b)
 ```
 
-**标准答案:** `10001101`
-
-**隐藏规则(本题真实变换):**
-```
-s = not(rol1(x))    # 循环左移 1 位后取反
-a = not(shr3(x))    # 右移 3 位后取反
-b = shl2(x)         # 左移 2 位
-out = sel_nand_xnor(s, a, b)   # s 为 1 的位用 nand(a,b),s 为 0 的位用 xnor(a,b)
-```
-
-**为什么它难 + 三个核心洞察:**
-- 输入输出都是 8 位。**每一个输出 bit,都是若干输入 bit 的一个布尔函数**:可能是常数 / 恒等 / NOT /
-  两输入门(AND/OR/XOR/NAND/NOR/XNOR…)/ 三输入门(MAJ 多数、CHOICE 选择、PAR3 奇偶…)/ 甚至四输入门。
-- **洞察一(逐 bit 串行):** 这个模型**没法在脑子里并行算多 bit 位运算**。直接让它算两个 8-bit 串的 AND,
-  准确率会暴跌到 ~9%。必须逼它**逐位写出来**:`0&1=0  1&1=1  0&0=0 …`,把"8 位运算"拆成 8 个"单 bit 子问题"。
-- **洞察二(列视角 + 验证):** 把第 i 个输出 bit 在所有示例上的取值看成一个"竖列",找哪个布尔函数能复现这一列。
-  但**一个错误的函数可能在示例上碰巧也匹配**,所以选出的规则必须用 query 真正验证。
-- **洞察三(省 token):** Nemotron 的 tokenizer **几乎一个二进制字符就是一个 token**。
-  8 位 × 10 示例 × 反复书写 = token 爆炸。高手把二进制串压成 **HEX**(`01101001` → `69`)来省 token,
-  把省下的预算用来搜更复杂的门(如 MAJ)。
+**Why it's hard + three core insights:**
+- Both input and output are 8 bits. **Every output bit is some Boolean function of several input bits**: it could be a constant / identity / NOT /
+  a two-input gate (AND/OR/XOR/NAND/NOR/XNOR…) / a three-input gate (MAJ majority, CHOICE, PAR3 parity…) / or even a four-input gate.
+- **Insight 1 (bit-serial):** this model **can't compute multi-bit bitwise operations in its head in parallel**. Ask it directly to AND two 8-bit strings
+  and accuracy plummets to ~9%. You must force it to **write things out bit by bit**: `0&1=0  1&1=1  0&0=0 …`, decomposing "8-bit operation" into 8 "single-bit subproblems."
+- **Insight 2 (column view + verification):** treat the i-th output bit across all examples as a "vertical column," and find which Boolean function reproduces that column.
+  But **a wrong function may coincidentally match on the examples**, so the chosen rule must be genuinely verified against the query.
+- **Insight 3 (saving tokens):** Nemotron's tokenizer makes **nearly every binary character its own token**.
+  8 bits × 10 examples × writing them repeatedly = token explosion. The pros compress the binary strings into **HEX** (`01101001` → `69`) to save tokens,
+  and spend the saved budget searching for more complex gates (like MAJ).
 
 ---
 
-### 2.6 equation numeric(数字方程)—— 符号本身是噪声
+### 2.6 equation numeric — The symbol itself is noise
 
-**英文题面:**
+**English problem statement:**
 ```
 In Alice's Wonderland, a secret set of transformation rules is applied to equations.
 55`39 = 16
@@ -290,83 +232,73 @@ In Alice's Wonderland, a secret set of transformation rules is applied to equati
 Now, determine the result for: 81`20
 ```
 
-**中文翻译:**
-```
-在爱丽丝的仙境里,一套秘密的变换规则被施加到这些等式上。
-55`39 = 16
-61\65 = 126
-42>23 = 4223
-17\21 = 38
-现在,求下面这个的结果:81`20
-```
+**Ground-truth answer:** `61`
 
-**标准答案:** `61`
+**Hidden rule:** for `AB operator CD` (two two-digit numbers), the middle symbol (`` ` ``, `\`, `>`) **has zero visual meaning, differs per problem,
+and must be reverse-engineered from the examples**:
+- `` 55`39 = 16 `` → `` ` `` = subtraction (55 − 39)
+- `61\65 = 126`, `17\21 = 38` → `\` = addition
+- `42>23 = 4223` → `>` = concatenate ABCD
+- So the query `` 81`20 `` → 81 − 20 = **61**
 
-**隐藏规则:** 两个两位数 `AB 算子 CD`,中间那个符号(`` ` ``、`\`、`>`)**视觉含义为零,每题都不同,
-必须从示例反推**:
-- `` 55`39 = 16 `` → `` ` `` = 减法(55 − 39)
-- `61\65 = 126`、`17\21 = 38` → `\` = 加法
-- `42>23 = 4223` → `>` = 拼接 ABCD
-- 所以 query `` 81`20 `` → 81 − 20 = **61**
+**⭐ Key concept: deduce vs guess (runs through the last two families — be sure to understand it)**
 
-**⭐ 关键概念:deduce vs guess(贯穿后两类,务必搞懂)**
+The distinction comes down to one sentence: **whether the operator used in the query was actually demonstrated in the examples above.**
 
-区别只有一句话:**query 里用的那个算子,在上面的示例里到底演示过没有。**
-
-- **deduce(可推):** query 的算子**在示例里出现过** → 直接照搬即可。
+- **deduce (derivable):** the query's operator **appeared in the examples** → just reuse it directly.
   ```
-  55`39 = 16     ← 这里演示了 ` 的作用(55−39)
+  55`39 = 16     ← this demonstrates what ` does (55−39)
   61\65 = 126
-  求:81`20        ← query 用的是 ` ,前面演示过 → 直接套用 → deduce
+  Find: 81`20     ← the query uses ` , which was demonstrated above → apply directly → deduce
   ```
 
-- **guess(需猜):** query 的算子**在示例里一次都没出现过** → 没有直接演示可看。
+- **guess (must be guessed):** the query's operator **never appeared even once in the examples** → there's no direct demonstration to look at.
 
-  **真实示例(训练集 id = `260f20c1`,答案 `43`):**
+  **Real example (training set id = `260f20c1`, answer `43`):**
   ```
   84[69 = 153
   13+97 = 1260
   46+47 = 2161
   52[80 = 132
-  求:22\65          ← query 用的是 \ ,而上面四行里只有 [ 和 + ,\ 从没出现 → guess
+  Find: 22\65       ← the query uses \ , but the four rows above only have [ and + ; \ never appears → guess
   ```
 
-  乍一看 `\` 一次都没演示,像是"信息不足无法解"。但它**真的能解出来**,过程如下:
+  At first glance `\` is never demonstrated, which looks like "insufficient information, unsolvable." But it **really can be solved**, as follows:
 
-  1. **先破示例里出现过的两个算子(deduce 部分):**
-     - `[`:`84[69→153` 即 `84+69=153`;`52[80→132` 即 `52+80=132`。→ **`[` = 加法(add 组)**。
-     - `+`:`13+97→1260`,而 `13×97=1261`,差 1 → 是 `mul-1`;`46+47→2161=46×47−1` 验证通过。
-       → **`+` = 乘法减一(mul 组)**。
-       (注意:符号 `+` 干的竟然是**乘法**——这正印证了"算子符号是噪声,真规则要从输出反推"。)
-  2. **再定 query 算子 `\`(guess 部分):** 它一次没出现,但本工厂有条铁律 **观察二(同一题里每个算子来自不同的组,组不重复)**。
-     这题已经用掉了 **加组(`[`)** 和 **乘组(`+`)**,剩下没被占用的就是 **减组**。
-     所以即便没见过 `\`,也能断定:**`\` 必然属于减法家族。**
+  1. **First crack the two operators that do appear in the examples (the deduce part):**
+     - `[`: `84[69→153` means `84+69=153`; `52[80→132` means `52+80=132`. → **`[` = addition (the add group)**.
+     - `+`: `13+97→1260`, while `13×97=1261`, off by 1 → it's `mul-1`; `46+47→2161=46×47−1` confirms it.
+       → **`+` = multiply minus one (the mul group)**.
+       (Note: the symbol `+` is actually doing **multiplication** — this proves the point that "operator symbols are noise; the real rule must be inferred from the outputs.")
+  2. **Then pin down the query operator `\` (the guess part):** it never appears, but this factory has an iron law — **Observation 2 (within one problem, every operator comes from a different group; groups don't repeat)**.
+     This problem has already used up the **add group (`[`)** and the **mul group (`+`)**, so the only unclaimed one left is the **sub group**.
+     So even though we've never seen `\`, we can conclude: **`\` must belong to the subtraction family.**
 
-     > **⚠️ 这一步成立的关键前提:候选家族是封闭的,且没有"除法"。**
-     > 你可能会问:"排除加、乘,不是还剩减法**和除法**吗?凭什么是减法?"——因为**本比赛的规则清单里根本没有除法家族**。
-     > 选手从 `train.csv` 逆向出的全部规则,归类后**只有 4 个家族**:
-     > **join(拼接)/ add(加)/ sub(减)/ mul(乘)**。这个清单是"加规则加到能解释训练集所有题为止,多一条都不要"逆向出来的经验事实,不是假设。
-     > 所以排除 add、mul 后,非拼接家族里**唯一剩下的就是 sub**——不是在"减法 vs 除法"间二选一,而是除法压根不在候选集里。
-     > (唯一带点"除法味"的 `max(a,b) mod min(a,b)` 被归在减组;本题它给 `65 mod 22 = 21 ≠ 43`,故排除。)
-  3. **代入算答案:** 减法家族里,`22\65 → |22−65| = 43`(带符号的 `22−65=−43` 不取)→ **答案 43**。✓
+     > **⚠️ The key premise that makes this step work: the candidate families are closed, and there is no "division."**
+     > You might ask: "After ruling out add and mul, aren't subtraction **and division** both left? Why must it be subtraction?" — Because **this competition's rule list simply has no division family.**
+     > The full set of rules competitors reverse-engineered from `train.csv`, once categorized, comprises **only 4 families**:
+     > **join / add / sub / mul.** This list is an empirical fact derived by "adding rules until they explain every problem in the training set, and not one rule more" — not an assumption.
+     > So after excluding add and mul, the **only non-join family left is sub** — it isn't a coin flip between "subtraction vs division"; division simply isn't in the candidate set at all.
+     > (The one thing with a faint "division flavor," `max(a,b) mod min(a,b)`, is categorized under the sub group; here it gives `65 mod 22 = 21 ≠ 43`, so it's ruled out.)
+  3. **Substitute and compute the answer:** within the subtraction family, `22\65 → |22−65| = 43` (the signed `22−65=−43` is not taken) → **answer 43**. ✓
 
-  **这就是 guess 可解的本质:** 算子符号本身不提供信息,但**整道题的结构**(每个家族只用一次)反过来把"那个没出现的算子属于哪个家族"给框死了。
-  - 残留的小不确定性(比如减法家族里到底是 `|a−b|` 还是 `b−a`)才是 guess 真正难、可解率只有 ~50% 的原因——
-    这一步只能靠**算子先验 + 训练集频率**去赌,而不是逻辑必然。
+  **This is the essence of why guess is solvable:** the operator symbol itself provides no information, but **the structure of the whole problem** (each family is used only once) in turn locks down "which family that never-seen operator belongs to."
+  - The residual small uncertainty (e.g., within the subtraction family, is it `|a−b|` or `b−a`?) is what makes guess genuinely hard, with a solve rate of only ~50% —
+    that step can only be bet on via **operator priors + training-set frequency**, not by logical necessity.
 
-- **难度差距:** guess 远难于 deduce。可解率:数字方程 ~95%(deduce)→ ~50%(guess);
-  密码算术 ~30%(deduce)→ ~10%(guess)。
-- 顶尖方案把这套规律压成了一张 **24 条规则清单**(add / add+1 / flip_add / sub / absdiff / mul / flip_mul / join …),
-  并发现两条铁律:
-  - **观察一(模式一致):** 同一题里所有非拼接算子用同一种模式(全 normal 或全 flip 翻转)。
-  - **观察二(组不重复):** 同一题里不同算子不会用同一组(加组 / 减组 / 乘组各用一次)。
-  - 这两条约束极大地缩小了搜索空间。
+- **The difficulty gap:** guess is far harder than deduce. Solve rates: equation numeric ~95% (deduce) → ~50% (guess);
+  cryptarithm ~30% (deduce) → ~10% (guess).
+- Top solutions compressed this regularity into a **24-rule list** (add / add+1 / flip_add / sub / absdiff / mul / flip_mul / join …),
+  and discovered two iron laws:
+  - **Observation 1 (pattern consistency):** within one problem, all non-join operators use the same pattern (all normal or all flipped).
+  - **Observation 2 (no group repeats):** within one problem, different operators never use the same group (add / sub / mul groups are each used once).
+  - These two constraints shrink the search space enormously.
 
 ---
 
-### 2.7 cryptarithm(密码算术)—— 最终决胜战场,天花板级难度
+### 2.7 cryptarithm — The final decider, ceiling-level difficulty
 
-**英文题面:**
+**English problem statement:**
 ```
 In Alice's Wonderland, a secret set of transformation rules is applied to equations.
 |!)<< = <[[
@@ -375,40 +307,31 @@ In Alice's Wonderland, a secret set of transformation rules is applied to equati
 Now, determine the result for: !')?<
 ```
 
-**中文翻译:**
-```
-在爱丽丝的仙境里,一套秘密的变换规则被施加到这些等式上。
-|!)<< = <[[
-::$\{ = !{?
-<<$'' = {\|(
-现在,求下面这个的结果:!')?<
-```
+**Ground-truth answer:** `:![`
 
-**标准答案:** `:![`
+**Hidden rule:** it's just equation numeric **with one more layer of symbol encryption** — **even the digits themselves are replaced by symbols.**
+Each equation has the form `2 symbols + operator symbol + 2 symbols = output symbols`, and you must crack three things **simultaneously**:
+1. Each symbol → which digit (a bijection, with up to ~10 digit-symbols per problem)
+2. Each operator symbol → which of the 24 rules
+3. Re-encode the computed numeric result **back into symbols**
 
-**隐藏规则:** 它就是 equation numeric **再套一层符号加密**——**连数字本身都被换成了符号**。
-每个等式形如 `2 符号 + 算子符号 + 2 符号 = 输出符号`,你要**同时**破解三件事:
-1. 每个符号 → 哪个数字(双射,一题里最多约 10 个数字符号)
-2. 每个算子符号 → 24 条规则里的哪一条
-3. 把算出的数字结果**再编码回符号**
-
-本题最终破解:
+The final crack for this problem:
 ```
 |=0  !=4  <=7  [=1  :=3  {=2  \=8  ?=9  '=6  (=5
-) = flip_add(翻转相加)
-$ = flip_mul(翻转相乘)
+) = flip_add
+$ = flip_mul
 ```
-query `!')?<` → 用映射变成 `46)97` → `)` 是 flip_add → 把两个两位数各翻转 `64 + 79 = 143`
-→ 结果再翻转得 `341` → 把 3,4,1 编码回符号 = `:![`。
+The query `!')?<` → mapped via the substitution becomes `46)97` → `)` is flip_add → flip each two-digit number `64 + 79 = 143`
+→ flip the result to get `341` → encode 3, 4, 1 back into symbols = `:![`.
 
-**为什么它是天花板级难:**
-- **朴素搜索空间:** 数字分配 `10! ≈ 363 万` × 算子规则 `24³ ≈ 1.4 万` ≈ **5×10¹⁰** 种组合。
-- 这**绝不可能**在 7680 token 里逐 token 写出来。所以难点不只是"解出来",
-  而是 **"把搜索过程压缩成一段模型能在 7680 token 内走完的短程序"**。
-- 顶尖方案的破局点叫 **signature(签名)**:把等式中"哪些符号重复、符号出现在输出哪个位置"抽象成一个模式
-  (如 `ABCCCDD`),**预先把每个签名对应的候选数字组合算好,做成一张「签名目录」让模型背下来**;
-  推理时模型不从头搜,而是"回忆"出候选,再用 DFS 检查与其它等式是否一致。
-- 这正是整场比赛的胜负手:**"什么该让模型背下来(memorize),什么该让它在 trace 里现算(compute)"**——
-  把最贵的第一步(给 4~8 个符号同时定值)从"暴力搜索"变成"查表记忆"。
-- 这也是为什么即便冠军方案,cryptarithm 也只有 ~30%(deduce)/ ~10%(guess)的可解率:
-  很多题要么塞不进 token 预算,要么本身信息就不足。**这 30% vs 10% 的差距,就是 0.86 与 0.89 之间那 3 分的主要来源。**
+**Why it's ceiling-level hard:**
+- **Naive search space:** digit assignments `10! ≈ 3.63 million` × operator rules `24³ ≈ 14 thousand` ≈ **5×10¹⁰** combinations.
+- This is **absolutely impossible** to write out token by token within 7,680 tokens. So the difficulty isn't just "solving it,"
+  it's **"compressing the search process into a short program the model can run to completion within 7,680 tokens."**
+- The breakthrough in top solutions is called the **signature**: abstract "which symbols repeat, and where symbols appear in the output" of an equation into a pattern
+  (e.g., `ABCCCDD`), **pre-compute the candidate digit combinations for each signature, and turn it into a "signature catalog" for the model to memorize**;
+  at inference time the model doesn't search from scratch but "recalls" the candidates, then uses DFS to check consistency with the other equations.
+- This is the very crux of the whole competition: **"what should the model memorize, and what should it compute on the fly in the trace"** —
+  turning the most expensive first step (assigning values to 4–8 symbols at once) from "brute-force search" into "table lookup from memory."
+- This is also why even the winning solution gets only ~30% (deduce) / ~10% (guess) solve rates on cryptarithm:
+  many problems either won't fit in the token budget, or are simply underdetermined. **This 30% vs 10% gap is the main source of those 3 points between 0.86 and 0.89.**

@@ -18,7 +18,7 @@ PROMPT_SUFFIX = '\nPlease put your final answer inside `\\boxed{}`. For example:
 
 
 def build_records(source_df):
-    """把 dataframe 转成 SFT 样本,并返回等长的 type 标签列表(给分层采样器用)。"""
+    """Convert a dataframe into SFT records + a parallel list of type labels (for the sampler)."""
     records, types = [], []
     for _, row in source_df.iterrows():
         cot = str(row["generated_cot"])
@@ -36,7 +36,7 @@ def build_records(source_df):
 
 
 def build_stratified_index_order(labels, batch_size, seed):
-    """预先算好一个"类型均衡"的样本顺序。"""
+    """Precompute a type-balanced ("stratified") sample order."""
     by_label = defaultdict(list)
     for idx, label in enumerate(labels):
         by_label[label].append(idx)

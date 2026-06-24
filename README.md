@@ -7,7 +7,7 @@
   <a href="https://pypi.org/project/tracedistill/"><img src="https://img.shields.io/pypi/v/tracedistill" alt="PyPI"></a>
   <img src="https://img.shields.io/badge/python-3.9+-blue" alt="Python">
   <img src="https://img.shields.io/badge/License-MIT-yellow" alt="License: MIT">
-  <a href="https://www.kaggle.com/competitions/nvidia-nemotron-model-reasoning-challenge"><img src="https://img.shields.io/badge/Kaggle-Silver%20·%2065%2F4163%20(Top%201.6%25)-C0C0C0" alt="Kaggle Silver"></a>
+  <a href="https://www.kaggle.com/competitions/nvidia-nemotron-model-reasoning-challenge"><img src="https://img.shields.io/badge/Kaggle-Silver%20·%2065%2F4182%20(Top%201.6%25)-C0C0C0" alt="Kaggle Silver"></a>
 </p>
 
 <h1 align="center">tracedistill</h1>
@@ -16,7 +16,7 @@
 
 `tracedistill` is the generalized core of team **VCDAD**'s **silver-medal** solution to the
 [NVIDIA Nemotron Model Reasoning Challenge](https://www.kaggle.com/competitions/nvidia-nemotron-model-reasoning-challenge)
-(**65 / 4163, Top 1.6%**), extracted into a small, tested library you can run on your own
+(**65 / 4182, Top 1.6%**), extracted into a small, tested library you can run on your own
 data. The medal-winning code is preserved verbatim in [`competition/`](competition/) and
 [pinned to this library byte-for-byte](tests/) by golden tests.
 
@@ -142,12 +142,12 @@ python examples/gsm8k_trace_distillation.py        # ~1h on one RTX 4080 (16 GB)
 ## The competition result
 
 On the hidden test set, the two-phase recipe on `Nemotron-3-Nano-30B-A3B` reached a
-**silver medal (65 / 4163, Top 1.6%)**. ~84% of the benchmark is "free" points that almost
+**silver medal (65 / 4182, Top 1.6%)**. ~84% of the benchmark is "free" points that almost
 everyone clears (gravity, unit conversion, Roman numerals, ciphers); the ranking is decided
 by two hard families — **cryptarithm** and **bit-manipulation** — which is exactly what the
 two-phase `Nudge` and the hard/easy split target. See [`docs/solution.md`](docs/solution.md),
 [`docs/dataset.md`](docs/dataset.md) and [`docs/model-card.md`](docs/model-card.md) for the
-full methodology (中文), and [`competition/`](competition/) for the verbatim solution.
+full methodology, and [`competition/`](competition/) for the verbatim solution.
 
 ## How it compares
 
@@ -167,11 +167,11 @@ full methodology (中文), and [`competition/`](competition/) for the verbatim s
   `tracedistill` reproduces them **byte-for-byte** over hundreds of fuzzed cases. 46 tests,
   torch-free, run in well under a second.
 
-## 中文简介
+The official Kaggle **Certificate of Achievement** — Silver Medalist, 65th of 4182 teams:
 
-`tracedistill` 是 **VCDAD 队** Kaggle [NVIDIA Nemotron Model Reasoning Challenge](https://www.kaggle.com/competitions/nvidia-nemotron-model-reasoning-challenge) **银牌方案（65/4163，Top 1.6%）** 的可复用内核,打包成一个带测试的开源库。给它 `(题目, 教师思维链, 答案)`,它训练出一个 LoRA adapter,让模型**自己一步步推理、再输出可解析的 `\boxed{}`** —— 应对"评测端不能跑代码、解题算法必须蒸馏进思维链"的任务。
-
-核心四件套:**格式契约**(`<think>…</think>\boxed{}` 与评测逐字一致,推理用上游 CoT、答案用官方标签解耦)、**两阶段 Train→Nudge**(大 lr 铺开 + 1/40 lr 精修难题防遗忘)、**类型分层采样**、**架构感知 LoRA**(覆盖 Mamba 的 `in_proj/out_proj`)。原始竞赛代码逐字保留在 [`competition/`](competition/),并由 [`tests/`](tests/) 的 golden 测试逐字节锁定。完整中文方法论见 [`docs/`](docs/)。
+<p align="center">
+  <a href="https://www.kaggle.com/certification/competitions/distiller/nvidia-nemotron-model-reasoning-challenge"><img src="https://raw.githubusercontent.com/DaoyuanLi2816/tracedistill/main/competition/certificate.png" alt="Kaggle Certificate of Achievement — Daoyuan Li, Silver Medalist, NVIDIA Nemotron Model Reasoning Challenge" width="72%"></a>
+</p>
 
 ## Citation
 
@@ -180,7 +180,7 @@ full methodology (中文), and [`competition/`](competition/) for the verbatim s
   title  = {tracedistill: Two-Phase LoRA Trace-Distillation for Reasoning Models},
   author = {Li, Daoyuan},
   year   = {2026},
-  note   = {Silver medal (65/4163), NVIDIA Nemotron Model Reasoning Challenge},
+  note   = {Silver medal (65/4182), NVIDIA Nemotron Model Reasoning Challenge},
   url    = {https://github.com/DaoyuanLi2816/tracedistill}
 }
 ```

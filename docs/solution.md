@@ -1,329 +1,285 @@
-# NVIDIA Nemotron Model Reasoning Challenge 解决方案
+# NVIDIA Nemotron Model Reasoning Challenge Solution
 
 ---
 
-## 1. 比赛理解
+## 1. Understanding the Competition
 
-### 1.1 背景与目标
+### 1.1 Background and Goal
 
-**NVIDIA Nemotron Model Reasoning Challenge（NVIDIA 推理挑战赛，简称 NVIDIA-NMRC）** 是 NVIDIA Research 在 2026 年举办的一场 Kaggle 比赛（报名 2026-03-16 起，提交截止 2026-06-15，最终 **4163 支队伍**参赛）。
+**The NVIDIA Nemotron Model Reasoning Challenge (NVIDIA-NMRC for short)** was a Kaggle competition hosted by NVIDIA Research in 2026 (registration opened 2026-03-16, submissions closed 2026-06-15, with a final field of **4182 teams**).
 
-比赛的核心命题是：**在一个所有人共用的固定基座大模型之上，通过技术手段提升它在一套全新推理基准上的解题准确率。**
+The central premise of the competition is this: **on top of a single fixed foundation model shared by everyone, use technical means to improve its solve-rate accuracy on a brand-new reasoning benchmark.**
 
-- **共享基座**：所有参赛者都使用同一个开源模型 **NVIDIA-Nemotron-3-Nano-30B-A3B**（见 §1.3），不能换模型。这样比的就是"技术"，而不是"谁的底座更强"。
-- **唯一硬性要求**：最终提交物必须是一个**适配该基座的 LoRA adapter**（rank ≤ 32），打包成 `submission.zip`。
-- **开放的技术路线**：官方允许任意方向：提示工程、数据过滤与筛选、合成数据生成、强化学习、轻量微调等，框架不限（Hugging Face / Unsloth / TRL / Axolotl 皆可）。
+- **Shared foundation**: every participant uses the same open-source model, **NVIDIA-Nemotron-3-Nano-30B-A3B** (see §1.3), and cannot swap it out. This way the competition is about *technique*, not "whose base model is stronger."
+- **The single hard requirement**: the final submission must be a **LoRA adapter compatible with that foundation model** (rank ≤ 32), packaged as `submission.zip`.
+- **An open technical playing field**: the organizers permit any direction — prompt engineering, data filtering and selection, synthetic data generation, reinforcement learning, lightweight fine-tuning, and so on — with no restriction on framework (Hugging Face / Unsloth / TRL / Axolotl all allowed).
 
-一句话概括输入输出：
+The input and output in one sentence:
 
-> **输入**：一批程序生成的逻辑推理谜题（每题给若干「输入 → 输出」示例，让你反推隐藏规则，再应用到一个待解 query 上）。
-> **输出**：一个 LoRA adapter；评测时主办方用它在隐藏测试集上**现场跑推理**，模型要在生成的思维链里把每道题**自己算出来**。
+> **Input**: a batch of procedurally generated logic puzzles (each puzzle gives several "input → output" examples; you reverse-engineer the hidden rule, then apply it to a query that needs solving).
+> **Output**: a LoRA adapter; at evaluation time the organizers use it to **run inference live** on a hidden test set, and the model must **work out each puzzle itself** within the chain-of-thought it generates.
 
-### 1.2 这场比赛为什么"不一样"
+### 1.2 Why This Competition Is "Different"
 
-这场比赛和普通 Kaggle / 普通 SFT 有几条根本差异，决定了它的全部打法：
+This competition differs from an ordinary Kaggle contest, and from ordinary SFT, in a few fundamental ways that dictate the entire approach:
 
-最关键的一点：**评测端不能跑 Python。** 你在本地用代码 100% 解出训练题毫无用处，关键是把"解题过程"写成思维链（Chain-of-Thought, CoT），用 SFT 蒸馏进 LoRA，让模型推理时**自己复现这段过程**把题算出来。
+The single most important point: **you cannot run Python at evaluation time.** Solving the training puzzles 100% with code locally is useless; what matters is writing the "solving process" as a chain-of-thought (CoT), distilling it into a LoRA via SFT, and getting the model to **reproduce that process itself** at inference time to compute the answer.
 
-### 1.3 基座模型：Nemotron-3-Nano-30B-A3B
+### 1.3 The Foundation Model: Nemotron-3-Nano-30B-A3B
 
-理解这个模型，才能理解为什么本场比赛的技巧都长这个样子。
+Only by understanding this model can you understand why all of this competition's techniques look the way they do.
 
-`NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` 拆开来看：
+Breaking down `NVIDIA-Nemotron-3-Nano-30B-A3B-BF16`:
 
-- **30B / A3B**：**总参数 30B，但每个 token 只激活约 3.5B**（A3B = Active 3B）。这是 **MoE（Mixture-of-Experts，混合专家）** 的标志：每个 MoE 层有 128 + 1 个专家，路由器为每个 token 只挑 6 个来算。"容量像中模型，算力像小模型"。
-- **混合架构**：它**不是纯 Transformer**。主体是 **23 层 Mamba-2（状态空间模型 SSM，复杂度随序列长度线性增长）**，只夹了 **6 层 Attention**。这让它能宣称原生 **100 万 token** 上下文。
-- **原生 reasoning 模型**：它默认**先吐一段 `<think>...</think>` 思维链，再给结论**。这正是本场"用 SFT 教它写解题 trace"打法的地基。
-- **BF16**：以 bfloat16 提供，比赛就是用 BF16 加载，**不量化**。
+- **30B / A3B**: **30B total parameters, but only about 3.5B activated per token** (A3B = Active 3B). This is the hallmark of a **MoE (Mixture-of-Experts)**: each MoE layer has 128 + 1 experts, and the router picks only 6 per token to compute with. "Capacity like a mid-size model, compute like a small one."
+- **Hybrid architecture**: it is **not a pure Transformer**. The backbone is **23 layers of Mamba-2 (a state space model, SSM, whose complexity grows linearly with sequence length)**, interleaved with just **6 Attention layers**. This is what lets it claim a native **1 million token** context.
+- **A native reasoning model**: by default it **first emits a `<think>...</think>` chain-of-thought, then gives the conclusion**. This is precisely the bedrock of this competition's "teach it to write solving traces via SFT" approach.
+- **BF16**: shipped as bfloat16; the competition loads it in BF16 and does **not quantize**.
 
-这三个特性直接塑造了比赛的工程战场：
+These three properties directly shape the engineering battlefield of the competition:
 
-1. **原生 1M 上下文，却被比赛硬砍到 8192（生成 ≤ 7680 token）。** 于是"解题过程能不能压进 token 预算"和"解得对不对"同等重要 → 催生了 HEX 压缩、签名目录、"背 vs 算"取舍等一系列技巧。
-2. **Mamba 成分 → 训练巨慢、环境难搞。** Mamba 依赖 `mamba_ssm`、`causal_conv1d` 等专用 CUDA kernel，它们在 Kaggle 的新款 **Blackwell GPU** 上兼容差。Kaggle 3 小时只能训约 2000 万 token，而第 1 名用自有工作站训了**上亿 token、上百小时**，这是很强的算力门槛。
-3. **MoE → 评分有噪声。** 即便 `temperature=0`（贪心解码），专家路由 + 浮点累加的非确定性也会让同一 adapter 多次评测分数小幅抖动。**结论：必须靠本地分层 CV，别只盯 Public LB。**
-4. **它的 tokenizer "很费 token"**（第 1 名实战观察）：接近"一个数字 / 二进制字符 = 一个 token"。在满屏二进制、符号的难题上，光写题面就极度耗 token，所以压缩 trace 是刚需。
+1. **A native 1M context, yet hard-capped by the competition to 8192 (generation ≤ 7680 tokens).** As a result, "can the solving process be squeezed into the token budget" matters just as much as "is the answer correct" → which gives rise to a whole series of techniques: HEX compression, signature catalogs, "memorize vs. compute" trade-offs, and more.
+2. **The Mamba component → painfully slow training and a finicky environment.** Mamba relies on dedicated CUDA kernels such as `mamba_ssm` and `causal_conv1d`, which have poor compatibility with Kaggle's new **Blackwell GPUs**. Kaggle's 3-hour limit allows training only about 20 million tokens, whereas the 1st-place team used their own workstation to train **hundreds of millions of tokens over hundreds of hours** — a substantial compute barrier.
+3. **MoE → noisy scoring.** Even with `temperature=0` (greedy decoding), the non-determinism of expert routing plus floating-point accumulation causes the same adapter's score to jitter slightly across repeated evaluations. **Conclusion: you must rely on local stratified CV, not just the Public LB.**
+4. **Its tokenizer is "token-hungry"** (a hands-on observation from the 1st-place team): close to "one digit / one binary character = one token." On hard puzzles full of binary and symbols, just writing out the problem statement is extremely token-expensive, so compressing the trace is a hard requirement.
 
-### 1.4 领域知识入门
+## 2. Dataset Overview
 
-**核心要点（5 条）**
+### 2.1 Fields and Scale
 
-1. **这是"工厂"数据，不是自然数据。** 每类题有固定的生成模板和**有限的规则库**；逆向出规则库 ≈ 攻克这一类。
-2. **表面全是噪声。** "爱丽丝仙境（Alice's Wonderland）"的故事包装、算子符号的视觉含义，都是用来骗模型的对抗性噪声，要训练它无视。
-3. **示例定参数，query 考应用。** 同一题的所有「输入→输出」示例共享同一套隐藏规则；最后的 query 考你应用。所有类别都是这个结构。
-4. **交 adapter，不交结果。** 解题算法必须蒸馏进模型，评测端现场跑、不能跑代码。
-5. **格式即生命。** 字符串题错一字符 = 0 分；数值题格式不对 = 0；漏 `\boxed{}` = 0。
+The official training set `train.csv` has only **3 columns** and **9500 puzzles** in total:
 
-**术语速览（10 条）**
-
-1. **LoRA（Low-Rank Adaptation，低秩适配）**：冻结基座，只训一小撮低秩矩阵，参数量极小、易部署。本场提交物就是它。
-2. **SFT（Supervised Fine-Tuning，监督式微调）**：用「输入 → 标准输出」样本对模型做监督训练。
-3. **CoT（Chain-of-Thought，思维链）**：模型在给最终答案前显式写出的推理过程。
-4. **Trace distillation（轨迹蒸馏）**：把"解题过程（trace）"作为训练目标，用 SFT 灌进模型，让它学会复现这套过程。
-5. **MoE（混合专家）**：用路由器为每个 token 只激活一小撮专家子网络，省算力。
-6. **Mamba / SSM（状态空间模型）**：用随序列推进的"状态"建模上下文，复杂度对长度线性，长文本又快又省显存。
-7. **`\boxed{}`**：LaTeX 命令，模型把最终答案写在里面，评测从中抠答案。
-8. **NEFTune（Noisy Embedding Fine-Tuning）**：训练时给 embedding 加一点随机噪声的轻量正则技巧（见 §4.4）。
-9. **deduce / guess**：难题的两个隐藏子类，区别在于 query 用的算子在示例里**出现过（deduce，可推）** 还是**没出现过（guess，需猜）**。
-10. **Stratified sampling（分层采样）**：组 batch 时让每个 batch 内各类型样本都摊到一点，稳定梯度。
-
----
-
-## 2. 数据集介绍
-
-### 2.1 字段与规模
-
-官方训练集 `train.csv` 只有 **3 列**，共 **9500 道**题：
-
-| 列名 | 含义 |
+| Column | Meaning |
 |---|---|
-| `id` | 题目唯一标识符 |
-| `prompt` | 题面：若干「输入→输出」示例 + 一个待解 query |
-| `answer` | 标准答案 |
+| `id` | Unique identifier for the puzzle |
+| `prompt` | The problem statement: several "input → output" examples + one query to solve |
+| `answer` | The reference answer |
 
-⚠️ **关键事实：官方 `train.csv` 既没有"题目类别"，也没有"思维链"。** 题目属于哪一类、隐藏规则是什么，全部要选手自己逆向。本方案 `training.py` 读取的并非官方 csv，而是一个**社区第三方数据集** `dgxchen/nemotron-cot-tong`，字段为 `type, prompt, answer, generated_cot`，其中多出来的 `generated_cot` 列为每道题预先备好了解题思维链，这正是本方案做轨迹蒸馏的原料。这一点至关重要，§4.1 会展开。
+⚠️ **Key fact: the official `train.csv` contains neither a "puzzle category" nor a "chain-of-thought."** Which class a puzzle belongs to and what its hidden rule is must all be reverse-engineered by the participant. The `training.py` in this solution does **not** read the official csv; instead it reads a **community third-party dataset**, `dgxchen/nemotron-cot-tong`, whose fields are `type, prompt, answer, generated_cot`. The extra `generated_cot` column provides a pre-prepared solving chain-of-thought for each puzzle — precisely the raw material for the trace distillation in this solution. This is crucial, and §4.1 expands on it.
 
-### 2.2 七大类题型与难度分布
+### 2.2 The Seven Puzzle Categories and Difficulty Distribution
 
-训练集分 **7 大类（细分 9 小类）**，难度极度不均：
+The training set splits into **7 major categories (9 sub-classes)**, with extremely uneven difficulty:
 
-| 类别 | 数量 | 顶尖方案大致可解率 | 性质 |
+| Category | Count | Approx. solve rate of top solutions | Nature |
 |---|---:|---:|---|
-| gravity（重力） | 1597 | 100% | 送分 |
-| unit conversion（单位换算） | 1594 | 100% | 送分 |
-| numeral system（罗马数字） | 1576 | 100% | 送分 |
-| text cipher（文字密码） | 1576 | ~99–100% | 送分 |
-| bit manipulation（位运算） | 1602 | ~93–97% | ⭐ 战场之一 |
-| equation numeric（数字方程） | 732（deduce 596 + guess 136） | deduce ~95% / guess ~50% | 中 |
-| cryptarithm（密码算术） | 823（deduce 659 + guess 164） | deduce ~30% / guess ~10% | ⭐⭐ 最终决胜 |
-| **合计** | **9500** | | |
+| gravity | 1597 | 100% | Free points |
+| unit conversion | 1594 | 100% | Free points |
+| numeral system (Roman numerals) | 1576 | 100% | Free points |
+| text cipher | 1576 | ~99–100% | Free points |
+| bit manipulation | 1602 | ~93–97% | ⭐ One of the battlegrounds |
+| equation numeric | 732 (deduce 596 + guess 136) | deduce ~95% / guess ~50% | Medium |
+| cryptarithm | 823 (deduce 659 + guess 164) | deduce ~30% / guess ~10% | ⭐⭐ The decisive class |
+| **Total** | **9500** | | |
 
-各类题的隐藏规则一句话速记（均含"爱丽丝仙境"故事包装，需无视）：
+The hidden rule of each category in one line (all include the "Alice's Wonderland" story wrapper, which must be ignored):
 
-- **gravity**：公式 `d = 0.5·g·t²` 白给，但 `g` 每题随机，从示例反解 `g`。
-- **unit conversion**：`输出 = 输入 × 系数`，系数每题随机（与重力同构，只是线性）。
-- **numeral system**：整数 ↔ 罗马数字（**字符串题，必须一字不差**）。
-- **text cipher**：26 字母双射替换密码。精妙点：**整个数据集明文只用 77 个固定单词**，把开放搜索锁成封闭搜索。
-- **bit manipulation**：8-bit 输入 → 8-bit 输出，每个输出 bit 是若干输入 bit 的布尔函数（AND/OR/XOR/NOT/MAJ…）。模型**无法并行算位运算**，必须**逐位写出来**，否则准确率暴跌到 ~9%。
-- **equation numeric**：`两位数 算子 两位数`，**算子符号的视觉含义是噪声**，真规则要从示例输出反推（如 `` ` `` 可能是减法、`+` 可能是乘法）。
-- **cryptarithm**：equation numeric **再套一层符号加密**：连数字本身都换成了符号，要同时破解"符号↔数字""符号↔算子规则""结果再编码回符号"三件事。**天花板级难度**。
+- **gravity**: the formula `d = 0.5·g·t²` is handed to you, but `g` is random per puzzle; reverse-solve `g` from the examples.
+- **unit conversion**: `output = input × coefficient`, with the coefficient random per puzzle (isomorphic to gravity, just linear).
+- **numeral system**: integer ↔ Roman numeral (**a string puzzle; must be character-for-character exact**).
+- **text cipher**: a 26-letter bijective substitution cipher. The clever part: **the entire dataset's plaintext uses only 77 fixed words**, turning an open search into a closed one.
+- **bit manipulation**: 8-bit input → 8-bit output, where each output bit is a boolean function of several input bits (AND/OR/XOR/NOT/MAJ…). The model **cannot compute bit operations in parallel** and must **write them out bit by bit**, or accuracy plunges to ~9%.
+- **equation numeric**: `two-digit operator two-digit`, where **the visual meaning of the operator symbol is noise**; the real rule must be inferred from the example outputs (e.g. `` ` `` might be subtraction, `+` might be multiplication).
+- **cryptarithm**: equation numeric with **another layer of symbolic encryption** on top: even the digits themselves are replaced by symbols, so you must simultaneously crack three things — "symbol ↔ digit," "symbol ↔ operator rule," and "re-encode the result back into symbols." **Ceiling-level difficulty.**
 
-**deduce vs guess（贯穿后两类，务必搞懂）**：区别只有一句话，就是 **query 里用的那个算子，在上面的示例里到底演示过没有。** 演示过 → deduce（直接照搬）；一次没出现 → guess（要靠"每个算子家族只用一次"等结构性约束反推它属于哪个家族）。guess 远难于 deduce，是真正拉开差距的子类。
+**deduce vs. guess (runs through the last two categories; make sure you grasp this)**: the difference is just one sentence — whether the operator used in the query was actually demonstrated in the examples above. Demonstrated → deduce (copy it directly); never appears even once → guess (you must infer which family it belongs to using structural constraints like "each operator family is used only once"). guess is far harder than deduce, and it is the sub-class that truly separates the field.
 
-### 2.3 测试集与"0.86 的墙"
+### 2.3 The Test Set and "the 0.86 Wall"
 
-- **测试集**：比赛里给的 `test.csv` 只是几道样例题（调试提交格式用），正式评分时换成**"数百道题（hundreds）"**的完整隐藏测试集，分 Public LB（比赛中可见）与 Private LB（最终排名）。**真正决定排名的是 Private LB。**
-- **测试集分布 ≈ 训练集分布**（官方未明示，但证据充分：同一程序化"工厂"生成，且第 3 名报告其训练集分层 local CV 与 Private LB 高度相关）。**所以可以放心用训练集分层做 local CV 来对标 Private LB。**
-- **每题只跑一次**：`temperature=0.0` 贪心，每题只生成一次、一锤定音，没有重试、没有多次采样。**推论：** 既然评测端不能投票，"验证 / 纠错"就必须**写进思维链里**（模型自己验算、发现矛盾再回退）。
+- **Test set**: the `test.csv` provided in the competition is just a handful of sample puzzles (for debugging the submission format); official scoring swaps in the full hidden test set of **"hundreds of puzzles,"** split into a Public LB (visible during the competition) and a Private LB (final ranking). **The Private LB is what truly decides the ranking.**
+- **Test distribution ≈ training distribution** (not stated explicitly by the organizers, but the evidence is strong: same procedural "factory" generation, and the 3rd-place team reported that their stratified local CV on the training set correlated highly with the Private LB). **So you can confidently use stratified local CV on the training set as a proxy for the Private LB.**
+- **Each puzzle is run once**: `temperature=0.0` greedy, each puzzle generated exactly once, one shot to settle it — no retries, no multi-sampling. **Implication:** since you cannot vote at evaluation time, "verification / self-correction" must be **written into the chain-of-thought** (the model checks its own work, spots a contradiction, and backs out).
 
-理解"0.86 的墙"是理解整场比赛的钥匙：
+Understanding "the 0.86 wall" is the key to understanding the whole competition:
 
-> 前 5 类送分题 + bit 的简单部分加起来约 **84%**，几乎人人都能接近满分，这部分大概就值 **0.85~0.86** 分，大家全挤在这里。
-> **从 0.86 拉到 0.89 的那 3 个百分点，几乎全部来自 cryptarithm 和 bit manipulation。** 顶尖队伍的全部精力都花在这两类上。
+> The first 5 free-point categories + the easy part of bit manipulation add up to about **84%**, and almost everyone can get close to a perfect score here; this part is worth roughly **0.85–0.86**, and everyone is clustered right there.
+> **The 3 percentage points that take you from 0.86 to 0.89 come almost entirely from cryptarithm and bit manipulation.** Top teams spend all their effort on these two categories.
 
 ---
 
-## 3. 评价指标介绍
+## 3. Evaluation Metric
 
-比赛采用**准确率（Accuracy）**，即正确作答题数占总题数的比例：
+The competition uses **accuracy** — the fraction of correctly answered puzzles out of the total:
 
 $$
-\text{Accuracy} = \frac{\#\{\text{预测正确的题}\}}{\#\{\text{全部题}\}}
+\text{Accuracy} = \frac{\#\{\text{correctly predicted puzzles}\}}{\#\{\text{all puzzles}\}}
 $$
 
-判分流程（主办方后台，非选手脚本）：
+The scoring pipeline (run on the organizers' back end, not in participant scripts):
 
-1. **加载**：vLLM 推理引擎加载 Nemotron-3-Nano-30B 基座 + 你提交的 LoRA adapter（必须含 `adapter_config.json`）。
-2. **生成**：对每道题，提示模型作答，并要求把最终答案写进 `\boxed{}`。
-3. **抽取**：从生成文本里提取答案，**优先解析 `\boxed{}` 内容**，其次启发式规则，最后回退到"最后一个数值"。
-4. **判对**：预测与真值**精确字符串相等**，或**相对误差在 $10^{-2}$ 以内**，即视为正确。
+1. **Load**: the vLLM inference engine loads the Nemotron-3-Nano-30B base model + your submitted LoRA adapter (which must include `adapter_config.json`).
+2. **Generate**: for each puzzle, prompt the model to answer and require it to write the final answer into `\boxed{}`.
+3. **Extract**: pull the answer from the generated text — **parse the contents of `\boxed{}` first**, then heuristic rules, and finally fall back to "the last numeric value."
+4. **Judge**: the prediction is counted correct if it is an **exact string match** with the ground truth, or its **relative error is within $10^{-2}$**.
 
-评测固定参数（务必让训练对齐这些）：
+Fixed evaluation parameters (be sure to align training with these):
 
-| 参数 | 值 | 含义 |
+| Parameter | Value | Meaning |
 | :--- | :--- | :--- |
-| `max_lora_rank` | 32 | adapter 的 rank 上限（硬约束） |
-| `max_tokens` | 7680 | **单题生成上限**，trace 必须压进这个预算 |
-| `top_p` | 1.0 | 贪心解码下不起作用 |
-| `temperature` | 0.0 | 贪心解码，每题一次 |
-| `max_num_seqs` | 64 | vLLM 批处理并发数（**不是**每题做 64 遍） |
-| `gpu_memory_utilization` | 0.85 | vLLM 占用显存的比例 |
-| `max_model_len` | 8192 | 上下文窗口（训练 `max_seq_length` 与之对齐） |
+| `max_lora_rank` | 32 | Upper bound on the adapter's rank (hard constraint) |
+| `max_tokens` | 7680 | **Per-puzzle generation cap**; the trace must fit within this budget |
+| `top_p` | 1.0 | Has no effect under greedy decoding |
+| `temperature` | 0.0 | Greedy decoding, once per puzzle |
+| `max_num_seqs` | 64 | vLLM batching concurrency (**not** 64 attempts per puzzle) |
+| `gpu_memory_utilization` | 0.85 | Fraction of GPU memory vLLM occupies |
+| `max_model_len` | 8192 | Context window (training `max_seq_length` is aligned with it) |
 
-**提交形式**：rank ≤ 32 的 LoRA adapter，打包为 `submission.zip`，只含 `adapter_config.json` + `adapter_model.safetensors` 两个文件（**不含基座权重**，基座评测端自带）。
+**Submission form**: a LoRA adapter with rank ≤ 32, packaged as `submission.zip`, containing only the two files `adapter_config.json` + `adapter_model.safetensors` (**no base weights**; the evaluator brings its own base model).
 
-> 对指标的两条直觉：（1）**数值题有 1e-2 容差**，算到两位小数即可，但答案要写成 `X.XX` 格式；（2）**字符串题（罗马数字、密码）零容差**，错一个字符就是 0，所以方案里会让模型"逐位拆 → 拼接 → 回读验证"。
+> Two intuitions about the metric: (1) **numeric puzzles have a 1e-2 tolerance**, so computing to two decimal places is enough, but the answer must be written in `X.XX` format; (2) **string puzzles (Roman numerals, ciphers) have zero tolerance** — one wrong character is 0 — so the solution has the model "split into pieces → concatenate → read back to verify."
 
 ---
 
-## 4. 解决方案解析
+## 4. Solution Walkthrough
 
-> 本节按执行管线的顺序，介绍本方案 `solution/training.py` 实现的**两阶段微调 Train → Nudge**，重点放在"为什么这么设计"。
+> This section follows the order of the execution pipeline, presenting the **two-phase fine-tuning, Train → Nudge**, implemented in this solution's `solution/training.py`, with the emphasis on "why it's designed this way."
 
-### 4.1 顶层心智模型：轨迹蒸馏 SFT
+### 4.1 Top-Level Mental Model: Trace-Distillation SFT
 
-在钻进代码前，先抓住整套方案在干什么：
+Before diving into the code, grasp what the whole approach is doing:
 
-> **拿一份"已经带好解题思维链（CoT）"的数据，用 SFT 把这套思维链 + 最终答案灌进一个 LoRA adapter，让基座模型在推理时能复现出来。**
+> **Take data that "already comes with a solving chain-of-thought (CoT)," use SFT to pour that chain-of-thought + the final answer into a LoRA adapter, and get the base model to reproduce it at inference time.**
 
-训练数据用的是公开数据集 `dgxchen/nemotron-cot-tong`，字段为 `type, prompt, answer, generated_cot`，其中 `generated_cot` 已为每道题备好了解题思维链，这就是蒸馏的原料。整套方案要做的，就是把"题面 → 思维链 + 答案"组织成 SFT 样本，微调出一个能在推理时复现解题过程的 LoRA。
+The training data uses the public dataset `dgxchen/nemotron-cot-tong`, whose fields are `type, prompt, answer, generated_cot`, where `generated_cot` already provides a solving chain-of-thought for each puzzle — that is the raw material for distillation. All the approach has to do is organize "problem statement → chain-of-thought + answer" into SFT samples and fine-tune a LoRA that can reproduce the solving process at inference time.
 
-### 4.2 方案流程概览
+### 4.2 Solution Pipeline Overview
 
-> 直接用浏览器打开 `方案流程图.svg` 查看高清版本。
+> Open `pipeline.svg` directly in your browser for the high-resolution version.
 
-### 4.3 各阶段详解
+### 4.3 Phase-by-Phase Walkthrough
 
-#### 阶段 0：配置与环境补丁
+#### Phase 0: Configuration and Environment Patches
 
-先看几行核心配置：
+First, a few lines of core configuration:
 
 ```python
 HARD_TYPES = {"cryptarithm_deduce", "cryptarithm_guess", "equation_numeric_guess"}
 LORA_RANK = 32 ; LORA_ALPHA = 32 ; LORA_DROPOUT = 0.0
 TARGET_MODULES = ["q_proj","k_proj","v_proj","o_proj",
-                  "in_proj","out_proj","up_proj","down_proj"]  # lm_head 被注释掉
+                  "in_proj","out_proj","up_proj","down_proj"]  # lm_head is commented out
 ```
 
-- **`HARD_TYPES` 是整套方案的核心判断。** 它与数据集结论一致：决定排名的是 cryptarithm（两个子类都难）+ equation_numeric 的 guess 子类。注意 `equation_numeric_deduce` 被划进 easy（它能从上下文直接抄出规律，不算难）。这个集合决定了**哪些题在两阶段都全量训、哪些只在第一阶段训**。
-- **`rank=32`** 顶到比赛上限，容量越大越能"背下"要记的东西（签名表、规律）。
-- **`dropout=0`** 关掉 dropout：SFT 蒸馏要的是"精确复刻轨迹"，宁可过拟合也要学准。
-- **`target_modules` 里出现 `in_proj` / `out_proj`** 是和架构挂钩的关键细节：它们是 **Mamba-2（SSM）块的输入输出投影**，普通 Llama 的 LoRA 配方里没有。这里把 LoRA 同时挂在 Attention 和 Mamba 两种层上，覆盖更全。
+- **`HARD_TYPES` is the core judgment of the whole approach.** It matches the dataset conclusion: what decides the ranking is cryptarithm (both sub-classes are hard) + the guess sub-class of equation_numeric. Note that `equation_numeric_deduce` is classified as easy (it can copy the pattern straight from the context, so it doesn't count as hard). This set determines **which puzzles are trained in full across both phases and which are trained only in the first phase**.
+- **`rank=32`** is pushed to the competition's upper limit; the larger the capacity, the more it can "memorize" what needs to be remembered (signature tables, patterns).
+- **`dropout=0`** turns off dropout: SFT distillation wants "exact replication of the trace," so it would rather overfit than learn imprecisely.
+- **The presence of `in_proj` / `out_proj` in `target_modules`** is a key, architecture-tied detail: they are the **input/output projections of the Mamba-2 (SSM) blocks**, which a vanilla Llama LoRA recipe does not include. Here LoRA is attached to both the Attention and the Mamba layers, for broader coverage.
 
-环境补丁（3 个 cell）是纯工程踩坑：离线装 Triton wheel、给 **Blackwell GPU 打 ptxas 补丁**（甚至 monkey-patch 让它谎报版本号 `'12.0'`）、离线装 `mamba_ssm` / `causal_conv1d`。它的存在本身就是一条信息：**新模型（2025-12 才发布）+ 新硬件（Blackwell）+ 不能联网 = 谁先把环境跑通谁就赢在起跑线。**
+The environment patches (3 cells) are pure engineering trench-work: installing the Triton wheel offline, **patching ptxas for the Blackwell GPU** (even monkey-patching it to lie about its version number as `'12.0'`), and installing `mamba_ssm` / `causal_conv1d` offline. Their very existence is a piece of information: **a new model (released only in 2025-12) + new hardware (Blackwell) + no internet access = whoever gets the environment running first wins at the starting line.**
 
-#### 阶段 1：数据切分（切成两个不重叠的集合）
+#### Phase 1: Data Split (into two non-overlapping sets)
 
 ```python
-n = int(hard_df["type"].value_counts().min())   # 三个 hard 类型里最稀缺那个的题数
-# 从每个 easy 类型随机抽 n 条留给 Nudge；其余全部 + 全部 hard 给 Epoch1
+n = int(hard_df["type"].value_counts().min())   # the count of the scarcest of the three hard types
+# Randomly sample n rows from each easy type to reserve for Nudge; everything else + all hard go to Epoch1
 ```
 
-| | **Epoch1 集（Phase 1 用）** | **Nudge 集（Phase 2 用）** |
+| | **Epoch1 set (used by Phase 1)** | **Nudge set (used by Phase 2)** |
 |---|---|---|
-| Hard 题 | ✅ **全部** | ✅ **全部** |
-| Easy 题 | ✅ 除被抽走的 `n×易题类数` 条外的剩余全部 | ✅ 每个易题类型**恰好 `n` 条** |
+| Hard puzzles | ✅ **All** | ✅ **All** |
+| Easy puzzles | ✅ All remaining after the `n × (number of easy types)` rows are taken out | ✅ Exactly `n` rows per easy type |
 
-设计意图：（1）**难题在两阶段都全量出现**，反复夯实；（2）易题拆成互不重叠两半，**Phase 2 见到的是 Phase 1 没训过的新鲜易题**（防遗忘又不重复过拟合）；（3）Nudge 集**类型均衡**，适合做小步、均衡的收尾。
+Design intent: (1) **hard puzzles appear in full in both phases**, reinforced repeatedly; (2) easy puzzles are split into two non-overlapping halves, so **Phase 2 sees fresh easy puzzles that Phase 1 never trained on** (guarding against forgetting without repeatedly overfitting); (3) the Nudge set is **type-balanced**, well suited for a small-step, balanced finishing pass.
 
-#### 阶段 2：构造 SFT 样本 `build_records`（全文最该逐字看的函数）
+#### Phase 2: Constructing the SFT Samples — `build_records` (the function most worth reading word for word in the entire write-up)
 
-格式错一个字符，推理时答案抽取就可能 0 分。这个函数确立了**训练目标的"格式契约"**：
+One wrong character in the format and answer extraction at inference time can score 0. This function establishes the **"format contract" of the training target**:
 
 ```python
-cot_cleaned = re.sub(r'\\boxed\{[^}]*\}', '', cot).rstrip()        # ② 剥掉原 CoT 自带的 \boxed
-user_content = str(row["prompt"]) + PROMPT_SUFFIX                   # ③ 题面 + 强制后缀(对齐评测)
-asst_content = cot_cleaned + f"\n</think>\n\\boxed{{{row['answer']}}}"  # ④ 用官方答案重拼 \boxed
+cot_cleaned = re.sub(r'\\boxed\{[^}]*\}', '', cot).rstrip()        # ② strip the \boxed that the original CoT came with
+user_content = str(row["prompt"]) + PROMPT_SUFFIX                   # ③ problem statement + mandatory suffix (aligns with eval)
+asst_content = cot_cleaned + f"\n</think>\n\\boxed{{{row['answer']}}}"  # ④ re-attach \boxed using the official answer
 ```
 
-一条完整训练目标长这样：
+A complete training target looks like this:
 
 ```
-<think>                         ← chat template 自动加 (enable_thinking=True)
-（上游思维链文本，已剥掉它自带的 \boxed）
-</think>                        ← build_records 手动加
-\boxed{官方答案}                 ← build_records 手动加(权威答案，不用上游可能写错的)
+<think>                         ← added automatically by the chat template (enable_thinking=True)
+(upstream chain-of-thought text, with its own \boxed stripped out)
+</think>                        ← added manually by build_records
+\boxed{official answer}         ← added manually by build_records (the authoritative answer, not the possibly-wrong upstream one)
 ```
 
-精髓在于把**思维过程**（用上游的）和**最终答案**（用官方的）解耦，并让这个结构**逐字等于评测协议**（评测从 `</think>` 后的 `\boxed{}` 抠答案）。后缀、`<think>/</think>` 配对、`\boxed{}` 三者构成"训练分布 = 评测分布"的契约，复盘改方案时**首先别动坏它**。
+The essence is decoupling the **thinking process** (using the upstream one) from the **final answer** (using the official one), and making this structure **character-for-character identical to the evaluation protocol** (the evaluator extracts the answer from the `\boxed{}` after `</think>`). The suffix, the paired `<think>/</think>`, and the `\boxed{}` together form the "training distribution = evaluation distribution" contract; when revising the approach later, **the first rule is not to break it.**
 
-#### 阶段 3：分层采样器，让每个 batch "七类齐全"
+#### Phase 3: The Stratified Sampler — "all seven categories in every batch"
 
-`batch=1` + `grad_accum=8`，等效 batch=8。若随机洗牌，某个等效 batch 可能**全是同一类题**，梯度忽左忽右、对稀缺难题不利。解法是用**取模轮转（round-robin）**把每个类型的样本均匀撒到所有 batch 桶里（直观理解：发牌，一种花色一张一张轮流发给 N 个 batch）。
+`batch=1` + `grad_accum=8` gives an effective batch of 8. With random shuffling, a given effective batch could be **all of the same puzzle type**, swinging the gradient back and forth — bad for the scarce hard puzzles. The fix is to use **modulo round-robin** to spread each type's samples evenly across all the batch buckets (intuitively: dealing cards, handing one card of each suit in turn to N batches).
 
-工程上刻意保持克制：不去 hack TRL 的内部洗牌逻辑，而是**预先算好一个固定样本顺序**，再用一个"照单全收"的 `PrecomputedOrderSampler` 喂给 DataLoader，`StratifiedSFTTrainer` 只重写 `get_train_dataloader` 一个方法。干净、可复现、改动面极小。
+The engineering is deliberately restrained: rather than hacking TRL's internal shuffling logic, it **precomputes a fixed sample order** and then feeds it through a "take it exactly as given" `PrecomputedOrderSampler` to the DataLoader, with `StratifiedSFTTrainer` overriding just the single method `get_train_dataloader`. Clean, reproducible, minimal surface area.
 
-#### 阶段 4：Phase 1 训练（Train），大力出奇迹
+#### Phase 4: Phase 1 Training (Train) — brute force wins the day
 
 ```python
 SFTConfig(
-    learning_rate=2e-4,      # ① 大学习率
-    warmup_steps=0,          # ② 不预热
-    num_train_epochs=1,      # 只过一遍
-    adam_beta2=0.95,         # ③ 比默认 0.999 小，对近期梯度更敏感
-    max_grad_norm=1e9,       # ④ 等于关掉梯度裁剪
-    neftune_noise_alpha=5.0, # ⑤ NEFTune 噪声
-    packing=False,           # ⑥ 不打包(避免跨样本注意力泄漏)
+    learning_rate=2e-4,      # ① large learning rate
+    warmup_steps=0,          # ② no warmup
+    num_train_epochs=1,      # only one pass
+    adam_beta2=0.95,         # ③ smaller than the default 0.999, more sensitive to recent gradients
+    max_grad_norm=1e9,       # ④ effectively turns off gradient clipping
+    neftune_noise_alpha=5.0, # ⑤ NEFTune noise
+    packing=False,           # ⑥ no packing (avoids cross-sample attention leakage)
 )
 ```
 
-Phase 1 的定位是"**狠狠地、快速地把轨迹砸进 LoRA**"：大 lr + 不预热 + **不裁剪梯度**，要的就是激进地把分布拉过去。代价是训练可能毛糙、不稳，这正是 Phase 2 要收拾的。训练完**立刻单独存档** `phase1_adapter`，既是保险，也作为"只训一阶段"的 A/B 对照候选。
+Phase 1's role is to "**slam the trace into the LoRA hard and fast**": a large lr + no warmup + **no gradient clipping**, deliberately pulling the distribution over aggressively. The cost is that training may be rough and unstable — which is exactly what Phase 2 cleans up. As soon as training finishes, **archive it separately** as `phase1_adapter`, both as a safety net and as the "trained for one phase only" A/B comparison candidate.
 
-#### 阶段 5：Phase 2 Nudge，小步轻推（整套方案最精妙处）
+#### Phase 5: Phase 2 Nudge — a gentle small-step push (the most elegant part of the whole approach)
 
-Phase 2 在 Phase 1 训完的**同一个 model 上继续训**（LoRA 权重接续，不重载），数据用 Nudge 集。两阶段对比：
+Phase 2 **continues training on the same model** that Phase 1 left off with (the LoRA weights carry over, not reloaded), using the Nudge set as data. A side-by-side comparison of the two phases:
 
-| 参数 | Phase 1（Train） | Phase 2（Nudge） | 含义 |
+| Parameter | Phase 1 (Train) | Phase 2 (Nudge) | Meaning |
 |------|----------------|------------------|------|
-| 学习率 | **2e-4** | **5e-6** | **差 40 倍**，Phase 2 极小步 |
-| 调度器 | linear | **cosine** | Phase 2 平滑收尾 |
-| warmup | 0 | **10** | Phase 2 先热身再动，更稳 |
-| `max_grad_norm` | **1e9（不裁）** | **1.0（标准裁剪）** | Phase 2 收住梯度，防破坏 |
-| 数据 | 难题全量 + 多数易题 | 难题全量 + 少量均衡易题 | Phase 2 聚焦难题 |
-| NEFTune | 5.0 | 5.0 | 一致 |
+| Learning rate | **2e-4** | **5e-6** | **40× apart**; Phase 2 takes tiny steps |
+| Scheduler | linear | **cosine** | Phase 2 finishes smoothly |
+| warmup | 0 | **10** | Phase 2 warms up before moving, for more stability |
+| `max_grad_norm` | **1e9 (no clip)** | **1.0 (standard clip)** | Phase 2 reins in the gradient to prevent damage |
+| Data | all hard + most easy | all hard + a small, balanced amount of easy | Phase 2 focuses on hard puzzles |
+| NEFTune | 5.0 | 5.0 | Consistent |
 
-**为什么分两阶段**：Phase 1 用大刀阔斧把所有题型"学个八九不离十"，但毛糙、在难题上差口气；Phase 2 用 **1/40 的学习率**在难题为主的均衡小集合上"小心翼翼再抠几分"，同时**掺入少量新鲜易题当锚防止灾难性遗忘**。一个管覆盖和速度，一个管精度和稳定。这比"单阶段一把梭"更能在决定排名的难题上压出边际分数，又不至于训崩或顾此失彼。
+**Why two phases**: Phase 1 uses broad, aggressive strokes to get every puzzle type "roughly learned," but the result is rough and falls a little short on the hard puzzles; Phase 2 uses **1/40 the learning rate** on a small, balanced set dominated by hard puzzles to "carefully extract a few more points," while **mixing in a small amount of fresh easy puzzles as an anchor against catastrophic forgetting**. One handles coverage and speed, the other handles precision and stability. This squeezes out marginal points on the ranking-deciding hard puzzles better than "single-phase, all-in" would, without blowing up training or losing one thing while gaining another.
 
-#### 阶段 6：打包提交 + 清理
+#### Phase 6: Package the Submission + Cleanup
 
-存最终 adapter 后，**patch `adapter_config.json`** 是个不改就直接挂掉的坑：
+After saving the final adapter, **patching `adapter_config.json`** is a pitfall that fails outright if not fixed:
 
 ```python
-cfg["base_model_name_or_path"] = BASE_MODEL_NAME   # ① 训练时被写成本地缓存路径，必须改回官方名
-cfg["inference_mode"] = True                        # ② 标记推理模式
-cfg["lora_dropout"]   = 0.0                          # ③ 推理时 dropout 关死，防引入随机性
+cfg["base_model_name_or_path"] = BASE_MODEL_NAME   # ① during training it got written as a local cache path; must be reverted to the official name
+cfg["inference_mode"] = True                        # ② mark inference mode
+cfg["lora_dropout"]   = 0.0                          # ③ turn dropout fully off at inference to avoid introducing randomness
 ```
 
-然后只把规则要求的两个文件 `adapter_config.json` + `adapter_model.safetensors` 打进 `submission.zip`（不含基座权重、不含 tokenizer，评测端自带）。
+Then pack only the two files the rules require, `adapter_config.json` + `adapter_model.safetensors`, into `submission.zip` (no base weights, no tokenizer; the evaluator brings its own).
 
-### 4.4 关键技术点
+### 4.4 Key Technical Points
 
-把整套方案的核心技术决策拎出来：
+Pulling out the core technical decisions of the whole approach:
 
-1. **轨迹蒸馏 SFT**：把"解题过程 + 答案"作为 SFT 目标灌进 LoRA，让模型在评测端（不能跑代码）自己复现解题。这是本场所有主流方案的共同范式。
-2. **"训练分布 = 评测分布"的格式契约**：`PROMPT_SUFFIX`、`<think>/</think>` 配对、用官方答案重拼 `\boxed{}`，把训练目标逐字对齐评测协议。**这是最不能改错的地方。**
-3. **两阶段 Train → Nudge**：lr 差 40 倍、裁剪从关到开、数据从全量收窄到聚焦难题。先猛后精，优于一把梭。
-4. **针对架构的 LoRA target**：覆盖 Mamba 的 `in_proj/out_proj`，而不只是 Attention 的 `q/k/v/o_proj`，这是混合架构模型微调的关键细节。
-5. **分层采样 + 类型均衡 Nudge 集**：确保稀缺的难题类型在训练信号里始终有稳定的存在感。
-6. **NEFTune + dropout=0 的"矛盾"组合**：
-   - **NEFTune（Noisy Embedding Fine-Tuning）**：训练时给 embedding 加均匀噪声（`X_noisy = X + (α/√(L·d))·ε`，本方案 α=5.0 偏保守），**只在训练时加、推理不加**。论文中它几乎零成本把 LLaMA-2-7B 的 AlpacaEval 胜率从 ~29% 拉到 ~64%。
-   - **为什么本场特别适合**：题面塞满对抗性花絮（"Alice's Wonderland"、乱编故事、被替换的算子符号），这些是噪声不是信号。NEFTune 逼模型**透过花絮抓真正的规律**，而不是死记题面字串。
-   - **看似矛盾实则各管一摊**：`dropout=0` 鼓励"记"（要背抽象规律），NEFTune 抑制"记"（要忘具体花絮），**要背的是抽象规律，要忘的是具体花絮。**
-7. **不量化、纯 BF16 训练**：30B MoE 很吃显存，但量化会损精度，"要精确复刻轨迹"的任务选择不量化。
+1. **Trace-distillation SFT**: pour the "solving process + answer" into the LoRA as the SFT target, so the model reproduces the solve itself on the evaluation side (where code cannot run). This is the shared paradigm of all mainstream solutions in this competition.
+2. **The "training distribution = evaluation distribution" format contract**: `PROMPT_SUFFIX`, the paired `<think>/</think>`, and re-attaching `\boxed{}` with the official answer, aligning the training target character-for-character with the evaluation protocol. **This is the place you can least afford to get wrong.**
+3. **Two-phase Train → Nudge**: lr 40× apart, clipping from off to on, data narrowing from full to a hard-puzzle focus. Aggressive first, precise second — better than going all-in at once.
+4. **Architecture-targeted LoRA**: covering Mamba's `in_proj/out_proj`, not just Attention's `q/k/v/o_proj` — a key detail for fine-tuning hybrid-architecture models.
+5. **Stratified sampling + a type-balanced Nudge set**: ensuring the scarce hard-puzzle types always have a stable presence in the training signal.
+6. **The "contradictory" NEFTune + dropout=0 combination**:
+   - **NEFTune (Noisy Embedding Fine-Tuning)**: adds uniform noise to the embeddings during training (`X_noisy = X + (α/√(L·d))·ε`, with α=5.0 in this solution, on the conservative side), **applied only during training, never at inference**. In the paper it raised LLaMA-2-7B's AlpacaEval win rate from ~29% to ~64% at essentially zero cost.
+   - **Why it's especially well suited here**: the problem statements are stuffed with adversarial fluff ("Alice's Wonderland," made-up stories, substituted operator symbols) — these are noise, not signal. NEFTune forces the model to **grasp the real rule through the fluff** rather than memorizing the literal problem-statement strings.
+   - **Seemingly contradictory, but each handles its own job**: `dropout=0` encourages "memorizing" (you want the abstract rule remembered), while NEFTune suppresses "memorizing" (you want the concrete fluff forgotten) — **what should be memorized is the abstract rule; what should be forgotten is the concrete fluff.**
+7. **No quantization, pure BF16 training**: a 30B MoE is memory-hungry, but quantization would hurt precision; a task that demands "exact replication of the trace" chooses not to quantize.
 
-### 4.5 两类难题的解题逻辑：cryptarithm 与 bit manipulation
+### 4.5 The Solving Logic of the Two Hard Categories: cryptarithm and bit manipulation
 
-> cryptarithm 和 bit manipulation 是全场真正拉开分数的两类，0.86 → 0.89 几乎全部来自这里。下面把这两类的解题逻辑讲清楚。
+> cryptarithm and bit manipulation are the two categories that genuinely separate the field; 0.86 → 0.89 comes almost entirely from here. Below, the solving logic of each is laid out clearly.
 
-- **bit manipulation（位运算）**，三个核心洞察：
-  - （1）**逐 bit 串行**：逼模型把"8 位运算"拆成 8 个"单 bit 子问题"写出来，否则准确率暴跌到 ~9%；
-  - （2）**列视角 + 验证**：把每个输出 bit 在所有示例上的取值看成一"竖列"，找能复现这列的布尔函数，再用 query 验证（防止偶然匹配）；
-  - （3）**HEX 压缩省 token**：把 `01101001` 压成 `69`，砍掉约 28% token，省出预算搜更复杂的门（MAJ 等）。
+- **bit manipulation**, three core insights:
+  - (1) **Serial, bit by bit**: force the model to break "an 8-bit operation" into 8 "single-bit sub-problems" and write them out, or accuracy plunges to ~9%;
+  - (2) **Column view + verification**: treat each output bit's values across all examples as a "column," find the boolean function that reproduces that column, then verify with the query (to prevent a coincidental match);
+  - (3) **HEX compression to save tokens**: compress `01101001` into `69`, cutting about 28% of the tokens and freeing up budget to search for more complex gates (MAJ, etc.).
 
-- **cryptarithm（密码算术）**，
-  - 天花板级难：朴素搜索空间约 `10! × 24³ ≈ 5×10¹⁰`，绝不可能在 7680 token 里逐步写完。
-  - 破局点叫 **signature（签名）**：把等式中"哪些符号重复、出现在输出哪个位置"抽象成模式（如 `ABCCCDD`），**预先把每个签名对应的候选数字组合算好做成一张「签名目录」让模型背下来**；推理时模型不从头搜，而是"回忆"出候选再用 DFS 验证一致性。
+- **cryptarithm**:
+  - Ceiling-level difficulty: the naive search space is roughly `10! × 24³ ≈ 5×10¹⁰`, utterly impossible to write out step by step within 7680 tokens.
+  - The breakthrough is called the **signature**: abstract "which symbols repeat, and in which positions of the output they appear" in the equation into a pattern (e.g. `ABCCCDD`), **precompute the candidate digit combinations for each signature into a "signature catalog," and have the model memorize it**; at inference time the model does not search from scratch but instead "recalls" the candidates and then uses DFS to verify consistency.
 
-- **这正是整场比赛的胜负手**：**"什么该让模型背下来（memorize）、什么该让它在 trace 里现算（compute）"**，把最贵的第一步从"暴力搜索"变成"查表记忆"。即便冠军方案，cryptarithm 也只有 ~30%(deduce)/~10%(guess) 可解率，**这点差距就是 0.86 与 0.89 之间那 3 分的主要来源。**
-
----
-
-## 5. 简历竞赛经历模板
-
-> 下面给一个可直接套用的模板，方括号 `[ ]` 处按你的真实排名 / 分数替换。建议放在简历"竞赛 / 项目经历"栏。
+- **This is precisely the deciding factor of the whole competition**: **"what to make the model memorize vs. what to make it compute live in the trace,"** turning the most expensive first step from "brute-force search" into "table-lookup recall." Even in the winning solution, cryptarithm is only ~30% (deduce) / ~10% (guess) solvable, **and this gap is the main source of those 3 points between 0.86 and 0.89.**
 
 ---
 
-**NVIDIA Nemotron Model Reasoning Challenge（NVIDIA 推理挑战赛 · Kaggle）**
-*2026.03 – 2026.06ㅤ|ㅤ参赛 4163 支队伍ㅤ|ㅤ[排名 Top x% / 铜·银·金牌]，Private LB Accuracy [0.8x]*
-
-- **赛题背景 / 挑战**：在 NVIDIA 指定的混合架构 MoE 推理模型 **Nemotron-3-Nano-30B-A3B**（30B 总参 / 3.5B 激活，Mamba-Transformer 混合）之上微调 **LoRA adapter**，提升其在程序生成推理谜题上的解题准确率。核心难点：评测端**不能跑代码**（解题算法必须蒸馏进模型）、**单题生成上限 7680 token**、难题（密码算术 / 位运算）搜索空间高达 `~5×10¹⁰`。
-
-- **方案设计与实现**：
-  - **轨迹蒸馏 SFT**：将带解题思维链（CoT）的样本构造成「`<think>` 推理 + `</think>` + `\boxed{官方答案}`」格式，**逐字对齐评测协议**，用 SFT 把解题过程灌进 LoRA。
-  - **两阶段微调 Train → Nudge**：Phase 1 用大学习率（2e-4）+ 关闭梯度裁剪激进灌入全部题型；Phase 2 用 1/40 学习率（5e-6）+ cosine 退火 + 标准裁剪，在**难题为主、类型均衡**的小集合上精修，并掺入新鲜易题**防止灾难性遗忘**。
-  - **架构感知的 LoRA**：针对 Mamba-2 块挂上 `in_proj/out_proj`（而非仅 Attention 投影），rank 顶到合规上限 32。
-  - **训练工程优化**：自定义**分层采样器**（round-robin 保证每个 batch 各类型均衡）、引入 **NEFTune** 噪声正则对抗题面对抗性花絮、纯 BF16 不量化以精确复刻轨迹；并攻克新模型 + Blackwell GPU 的离线环境依赖（Triton / ptxas / mamba_ssm 补丁）。
-
-- **量化结果**：最终 Private LB Accuracy **[0.8x]**，在 4163 支队伍中取得 **[Top x% / 奖牌]**；通过本地分层 CV 对标 Private LB，规避了评分噪声导致的 Public LB 过拟合。
-
-- **技术栈**：PyTorch · Unsloth · TRL（SFTTrainer）· PEFT-LoRA · NEFTune · vLLM（评测）· Mamba/MoE 混合架构 · 多阶段微调 · 分层采样。
+*The reusable core of this solution is packaged as the [`tracedistill`](../README.md) library; the original competition script is preserved verbatim under [`competition/`](../competition/).*

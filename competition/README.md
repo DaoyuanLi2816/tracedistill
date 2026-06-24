@@ -2,7 +2,7 @@
 
 > This directory preserves team **VCDAD**'s original, **unmodified** Kaggle solution to
 > the [NVIDIA Nemotron Model Reasoning Challenge](https://www.kaggle.com/competitions/nvidia-nemotron-model-reasoning-challenge)
-> — **Silver Medal, 65 / 4163 (Top 1.6%)**.
+> — **Silver Medal, 65 / 4182 (Top 1.6%)**.
 >
 > The reusable core of this code has been extracted into the **[`tracedistill`](../README.md)**
 > library at the repository root. The library is pinned to this original here by the

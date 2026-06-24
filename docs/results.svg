@@ -1,44 +1,44 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 320" role="img" aria-label="GSM8K boxed-answer accuracy: zero-shot 32%, answer-only SFT 4.5% (collapse), trace-distill 1-phase 28%, trace-distill 2-phase 29.5%. Trace distillation doubles hard-problem accuracy 6.1% to 12.1%.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 322" role="img" aria-label="GSM8K boxed-answer accuracy: zero-shot 32%, answer-only SFT 4.5% (collapse), trace-distill 1-phase 28%, trace-distill 2-phase 29.5%. Trace distillation doubles hard-problem accuracy from 6.1% to 12.1%.">
   <defs>
     <linearGradient id="rbg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#0d1117"/>
       <stop offset="1" stop-color="#11161f"/>
     </linearGradient>
   </defs>
-  <rect width="820" height="320" rx="12" fill="url(#rbg)"/>
-  <rect x="0" y="0" width="8" height="320" rx="0" fill="#76B900"/>
+  <rect width="840" height="322" rx="12" fill="url(#rbg)"/>
+  <rect x="0" y="0" width="8" height="322" fill="#76B900"/>
 
   <text x="32" y="40" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="20" font-weight="700" fill="#e6edf3">GSM8K boxed-answer accuracy</text>
-  <text x="32" y="62" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#8b949e">Qwen2.5-0.5B-Instruct + LoRA · 1200 train / 200 test · one RTX 4080</text>
+  <text x="32" y="61" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#8b949e">Qwen2.5-0.5B-Instruct + LoRA · 1200 train / 200 test · one RTX 4080</text>
 
-  <!-- gridline at 32% (zero-shot baseline) -->
-  <line x1="296" y1="84" x2="296" y2="280" stroke="#30363d" stroke-width="1" stroke-dasharray="3 3"/>
-  <text x="296" y="298" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#6e7681" text-anchor="middle">32% zero-shot baseline</text>
+  <!-- zero-shot baseline gridline at 32% (x = 250 + 32*8.6 = 525), label at TOP (no collision) -->
+  <line x1="525" y1="92" x2="525" y2="250" stroke="#3d444d" stroke-width="1" stroke-dasharray="3 3"/>
+  <text x="525" y="84" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#6e7681" text-anchor="middle">32% zero-shot baseline</text>
 
-  <!-- scale: 0% at x=250, 35% at x=540 -> 8.286 px per % -->
+  <!-- bars: scale 8.6 px per %, 0% at x=250 -->
   <g font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="14">
-    <!-- zero-shot 32.0 -->
-    <text x="240" y="105" fill="#c9d1d9" text-anchor="end">zero-shot</text>
-    <rect x="250" y="92" width="265" height="22" rx="4" fill="#6e7681"/>
-    <text x="523" y="108" fill="#c9d1d9">32.0%  ·  parse 64%</text>
+    <!-- zero-shot 32.0 -> 275px -->
+    <text x="238" y="113" fill="#c9d1d9" text-anchor="end">zero-shot</text>
+    <rect x="250" y="96" width="275" height="26" rx="4" fill="#6e7681"/>
+    <text x="533" y="114" fill="#9aa3af">32.0%  ·  parse 64%</text>
 
-    <!-- answer-only SFT 4.5 (collapse) -->
-    <text x="240" y="149" fill="#c9d1d9" text-anchor="end">answer-only SFT</text>
-    <rect x="250" y="136" width="37" height="22" rx="4" fill="#da3633"/>
-    <text x="295" y="152" fill="#f0c0bf">4.5%  ·  parse 100%  ←  collapses (skips reasoning)</text>
+    <!-- answer-only SFT 4.5 -> 39px (collapse) -->
+    <text x="238" y="157" fill="#c9d1d9" text-anchor="end">answer-only SFT</text>
+    <rect x="250" y="140" width="39" height="26" rx="4" fill="#da3633"/>
+    <text x="297" y="158" fill="#e09b99">4.5%  ·  parse 100%  ←  collapses (skips reasoning)</text>
 
-    <!-- trace-distill 1 phase 28.0 -->
-    <text x="240" y="193" fill="#c9d1d9" text-anchor="end">trace-distill · 1 phase</text>
-    <rect x="250" y="180" width="232" height="22" rx="4" fill="#4a7c12"/>
-    <text x="490" y="196" fill="#c9d1d9">28.0%  ·  parse 100%</text>
+    <!-- trace-distill 1 phase 28.0 -> 241px -->
+    <text x="238" y="201" fill="#c9d1d9" text-anchor="end">trace-distill · 1 phase</text>
+    <rect x="250" y="184" width="241" height="26" rx="4" fill="#4a7c12"/>
+    <text x="499" y="202" fill="#9aa3af">28.0%  ·  parse 100%</text>
 
-    <!-- trace-distill 2 phase 29.5 -->
-    <text x="240" y="237" fill="#c9d1d9" text-anchor="end">trace-distill · 2 phase</text>
-    <rect x="250" y="224" width="244" height="22" rx="4" fill="#76B900"/>
-    <text x="502" y="240" fill="#e6edf3" font-weight="600">29.5%  ·  parse 99.5%</text>
+    <!-- trace-distill 2 phase 29.5 -> 254px -->
+    <text x="238" y="245" fill="#c9d1d9" text-anchor="end">trace-distill · 2 phase</text>
+    <rect x="250" y="228" width="254" height="26" rx="4" fill="#76B900"/>
+    <text x="512" y="246" fill="#e6edf3" font-weight="600">29.5%  ·  parse 99.5%</text>
   </g>
 
-  <!-- hard-slice callout -->
-  <rect x="32" y="262" width="756" height="2" fill="#21262d"/>
-  <text x="32" y="290" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#8b949e">Hard problems (≥5 reasoning steps): <tspan fill="#e6edf3" font-weight="600">6.1% → 12.1%</tspan> — trace distillation <tspan fill="#76B900" font-weight="600">doubles</tspan> hard-slice accuracy.</text>
+  <!-- hard-slice callout: its own band at the bottom -->
+  <line x1="32" y1="276" x2="808" y2="276" stroke="#21262d" stroke-width="1"/>
+  <text x="32" y="302" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#8b949e">Hard problems (≥5 reasoning steps): <tspan fill="#e6edf3" font-weight="600">6.1% → 12.1%</tspan> — trace distillation <tspan fill="#76B900" font-weight="700">doubles</tspan> the hard-slice accuracy.</text>
 </svg>

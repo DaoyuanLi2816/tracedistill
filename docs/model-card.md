@@ -1,173 +1,173 @@
-# 比赛基座模型详解:NVIDIA-Nemotron-3-Nano-30B-A3B
+# The Competition Base Model Explained: NVIDIA-Nemotron-3-Nano-30B-A3B
 
-> 本文讲清楚这场比赛锁定的基座模型**是什么、什么架构、属于哪个家族**,
-> 以及这些设计**对本场比赛意味着什么**。
-> 规格部分以官方 Hugging Face 模型卡为准(发布于 2025-12-15),并标注来源。
-> 配套阅读:`solution/比赛数据集介绍.md`。
-
----
-
-## 0. 一分钟速览
-
-- 这是 NVIDIA 2025 年底发布的**开源推理模型**,比赛把它当作**所有人共用的固定基座**——大家只能在它之上训练一个 LoRA,以此公平比拼"技术"而非"谁的底座强"。
-- 它是一个 **混合架构 MoE**:**总参数 30B,每个 token 只激活约 3.5B**;主体是 **Mamba-2 状态空间层**,只夹了**少量注意力层**(23 : 6)。不是你熟悉的纯 Transformer。
-- 它是个**原生 reasoning 模型**:默认先吐一段 `<think>` 思维链再给结论。这正是本场比赛"用 SFT 教它写解题 trace"打法的前提。
-- 它原生支持**最长 100 万 token 上下文**,但**比赛把推理上限硬砍到 8192**(生成≤7680)。这个落差是很多比赛技巧的根源。
+> This document explains **what** the base model locked in for this competition is, **what architecture** it uses, and **which family** it belongs to,
+> as well as **what these design choices mean** for this particular competition.
+> The specifications section follows the official Hugging Face model card (released 2025-12-15), with sources cited.
+> Companion reading: `docs/dataset.md`.
 
 ---
 
-## 1. 名字逐段拆解
+## 0. One-Minute Overview
+
+- This is an **open-source reasoning model** released by NVIDIA in late 2025. The competition uses it as a **single fixed base shared by everyone** — you may only train a LoRA on top of it, so the contest is a fair comparison of "technique" rather than "whose base model is stronger."
+- It is a **hybrid-architecture MoE**: **30B total parameters, but only about 3.5B activated per token**. The backbone is made of **Mamba-2 state-space layers**, interleaved with only **a small number of attention layers** (23 : 6). This is not the pure Transformer you're used to.
+- It is a **native reasoning model**: by default it first emits a `<think>` chain-of-thought before giving the conclusion. This is exactly the premise behind this competition's "use SFT to teach it to write solution traces" strategy.
+- It natively supports **context lengths up to 1 million tokens**, but **the competition hard-caps inference at 8192** (generation ≤ 7680). This gap is the root of many of the competition's techniques.
+
+---
+
+## 1. Decoding the Name Piece by Piece
 
 `NVIDIA-Nemotron-3-Nano-30B-A3B-BF16`
 
-| 片段 | 含义 |
+| Segment | Meaning |
 |---|---|
-| **Nemotron** | NVIDIA 的开源模型家族(详见第 5 节)。"开放模型 + 开放数据 + 开放训练配方"是它的招牌。 |
-| **3** | 第 3 代(Nemotron-3)。 |
-| **Nano** | 家族里的**最小档**(Nano / Super / Ultra 三档,见第 5 节)。Nano 目标是"单卡可跑"。 |
-| **30B** | **总参数 30B**。 |
-| **A3B** | **A**ctive **3B** —— 这是 **MoE** 的标志:虽然总参 30B,但每个 token 实际只激活约 **3.5B** 参数。 |
-| **BF16** | 权重以 **bfloat16** 提供(比赛就是用 BF16 加载,不量化)。 |
+| **Nemotron** | NVIDIA's open-source model family (see Section 5). "Open models + open data + open training recipes" is its signature. |
+| **3** | The 3rd generation (Nemotron-3). |
+| **Nano** | The **smallest tier** in the family (Nano / Super / Ultra, three tiers — see Section 5). Nano is designed to "run on a single GPU." |
+| **30B** | **30B total parameters.** |
+| **A3B** | **A**ctive **3B** — this is the hallmark of **MoE**: although there are 30B total parameters, each token actually activates only about **3.5B**. |
+| **BF16** | The weights are provided in **bfloat16** (the competition loads them in BF16, without quantization). |
 
-一句话:**"参数总量像中模型(30B),实际计算量像小模型(3.5B)"** —— 这正是 MoE 的卖点。
+In one sentence: **"a parameter count like a mid-size model (30B), but a compute cost like a small one (3.5B)"** — and that is precisely the selling point of MoE.
 
 ---
 
-## 2. 官方规格表(来自 Hugging Face 模型卡)
+## 2. Official Specifications Table (from the Hugging Face Model Card)
 
-| 项目 | 值 |
+| Item | Value |
 |---|---|
-| 总参数 / 激活参数 | **30B 总 / 约 3.5B 激活**(每 token) |
-| 架构 | **混合 MoE**:23 层 Mamba-2 + MoE,6 层 Attention |
-| MoE 配置 | 每个 MoE 层 **128 个专家 + 1 个共享专家**,每 token 激活 **6 个专家** |
-| 原生上下文 | **最长 1,000,000(1M)token**,HF 默认配置 256k |
-| 模型类型 | **统一的 reasoning / 非 reasoning 模型**(可通过 chat template 的开关切换是否"思考") |
-| 训练数据 | 约 **25 万亿(25T)token**,共 141 个数据集 |
-| 数据时间截止 | 预训练 2025-06-25,后训练 2025-11-28 |
-| 语言 | 英、德、西、法、意、日 + 43 种编程语言 |
-| 许可证 | NVIDIA Nemotron Open Model License(允许商用) |
-| 发布日期 | **2025-12-15** |
-| 部分基准 | MMLU-Pro 78.3;AIME25(带工具)99.2%;MiniF2F pass@32 79.9%;SWE-Bench 38.8% |
+| Total / active parameters | **30B total / ~3.5B active** (per token) |
+| Architecture | **Hybrid MoE**: 23 Mamba-2 + MoE layers, 6 attention layers |
+| MoE configuration | **128 experts + 1 shared expert** per MoE layer, **6 experts** activated per token |
+| Native context | **Up to 1,000,000 (1M) tokens**; HF default config is 256k |
+| Model type | **Unified reasoning / non-reasoning model** (whether it "thinks" can be toggled via a switch in the chat template) |
+| Training data | ~**25 trillion (25T) tokens** across 141 datasets |
+| Data cutoff | Pre-training 2025-06-25, post-training 2025-11-28 |
+| Languages | English, German, Spanish, French, Italian, Japanese + 43 programming languages |
+| License | NVIDIA Nemotron Open Model License (commercial use permitted) |
+| Release date | **2025-12-15** |
+| Selected benchmarks | MMLU-Pro 78.3; AIME25 (with tools) 99.2%; MiniF2F pass@32 79.9%; SWE-Bench 38.8% |
 
-> ⚠️ **注意发布日期:** 模型 2025-12-15 才发布,比赛 2026-03-16 就开始了。
-> 也就是说选手面对的是一个**刚出炉、几乎没有现成微调工具链**的新模型——
-> 这解释了为什么论坛里满是"环境踩坑"帖,以及主办方要预打包一堆 wheel(见第 6 节)。
-
----
-
-## 3. 架构详解:为什么它不是普通 Transformer
-
-这台模型有两个你必须理解的非标准设计,它们直接决定了训练它的难点。
-
-### 3.1 混合 Mamba-Transformer(23 层 Mamba-2 : 6 层 Attention)
-
-- **标准大模型**:每一层都是自注意力(self-attention)。注意力很强,但计算/显存随序列长度**平方级**增长,长上下文很贵。
-- **Mamba(状态空间模型 / SSM)**:用一个**随序列推进的"状态"**来建模上下文,复杂度对序列长度是**线性**的,长文本上又快又省显存,但单层的"全局信息检索"能力不如注意力。
-- **NVIDIA 的折中**:**绝大多数层用 Mamba-2,只在少数关键位置(6 层)保留注意力**。这样既拿到 Mamba 的速度/长上下文,又用少量注意力补回"精确检索"能力。这就是它能宣称 **1M 上下文** 的底气。
-
-**对你的直接影响(后面第 6 节展开):**
-- 训练时 LoRA 不只挂在注意力的 `q/k/v/o_proj` 上,还要挂在 Mamba 块的 `in_proj / out_proj` 上(你在 `training.py` 的 `target_modules` 里看到的就是这个)。
-- Mamba 依赖专门的 CUDA kernel(`mamba_ssm`、`causal_conv1d`),它们在新硬件(Blackwell)上的兼容性差 → **训练巨慢**,是本场比赛的一大痛点。
-
-### 3.2 MoE(混合专家):128 + 1 个专家,每 token 选 6 个
-
-- 每个 MoE 层里有 **128 个"专家"子网络 + 1 个共享专家**。一个**路由器(router)**为每个 token 挑出最相关的 **6 个专家**来计算,其余 122 个不参与。
-- 所以**总参数 30B,但单 token 只激活约 3.5B** —— 这就是 A3B、也是"大容量 + 小算力"的来源。
-- **代价/坑**:
-  - 推理时即便 `temperature=0`(贪心),**专家路由 + 浮点累加的非确定性**也会让同一输入产生略有差异的输出 → 这就是论坛里"同一个 adapter 多交几次分数会抖"的根因。
-  - 微调时要决定 LoRA 是否覆盖 MoE 相关层、要不要解绑 `MoE tie weights`(第 3 名报告解绑后效果更好)。
-
-### 3.3 原生 reasoning 模型(自带 `<think>`)
-
-- 它被设计成**统一的推理模型**:面对问题时**先生成一段思维链(reasoning trace),再给结论**;是否"思考"可由 chat template 的开关控制。
-- **这就是整场比赛打法的地基**:这个模型本来就用思维链工作,你做的事是用 SFT 把"思维链的内容"**替换成你设计的、确定性的解题过程**,让它在评测时自己复现这段过程把题算出来。
-- 工程对应(你会在 `training.py` 看到):`tokenizer.apply_chat_template(..., enable_thinking=True)`;训练样本的 assistant 段以 `</think>\n\boxed{答案}` 收尾。
+> ⚠️ **Note the release date:** the model was only released on 2025-12-15, while the competition began on 2026-03-16.
+> In other words, competitors were dealing with a **brand-new model with virtually no ready-made fine-tuning toolchain** —
+> which explains why the forums were full of "environment pitfall" posts, and why the organizers had to pre-package a stack of wheels (see Section 6).
 
 ---
 
-## 4. 一个关键观察:它的 tokenizer "很费 token"
+## 3. Architecture Deep Dive: Why It Isn't an Ordinary Transformer
 
-这不在官方规格表里,是第 1 名在 writeup 里点出的实战观察,但极其重要:
+This model has two non-standard design choices you must understand; they directly determine the difficulty of training it.
 
-> **Nemotron 的 tokenizer 接近"一个数字/二进制字符 = 一个 token"。**
+### 3.1 Hybrid Mamba-Transformer (23 Mamba-2 layers : 6 Attention layers)
 
-- 后果:在 **bit manipulation**(满屏 8-bit 二进制串)和 **cryptarithm**(满屏符号)这种题上,光是把题面和中间结果写出来就极度**消耗 token**。
-- 而比赛生成上限只有 **7680 token**。于是顶尖方案普遍用一个技巧:**把长二进制串压成 HEX**(`01101001` → `69`),一举把 token 砍掉约 28%,省出的预算用来搜更复杂的规则。
-- 记住这条:在本场比赛里,**"tokenizer 费 token" × "7680 硬上限" = 必须压缩 trace**,这是 cryptarithm/bit 的核心工程约束。
+- **Standard large models**: every layer is self-attention. Attention is powerful, but its compute/memory grows **quadratically** with sequence length, making long contexts expensive.
+- **Mamba (state-space model / SSM)**: it models context using a **"state" that advances along the sequence**, giving **linear** complexity in sequence length — fast and memory-efficient on long text — but a single layer's "global information retrieval" ability is weaker than attention's.
+- **NVIDIA's compromise**: **use Mamba-2 for the vast majority of layers, keeping attention only at a few key positions (6 layers)**. This captures Mamba's speed and long context while using a small amount of attention to recover the "precise retrieval" capability. This is what gives it the confidence to claim a **1M context**.
+
+**Direct impact on you (expanded in Section 6):**
+- During training, LoRA is attached not only to attention's `q/k/v/o_proj`, but also to the Mamba blocks' `in_proj / out_proj` (this is exactly what you see in `training.py`'s `target_modules`).
+- Mamba relies on specialized CUDA kernels (`mamba_ssm`, `causal_conv1d`), and their compatibility on new hardware (Blackwell) is poor → **training is extremely slow**, which is one of this competition's major pain points.
+
+### 3.2 MoE (Mixture-of-Experts): 128 + 1 experts, 6 selected per token
+
+- Each MoE layer contains **128 "expert" sub-networks + 1 shared expert**. A **router** picks the **6 most relevant experts** for each token to compute, while the other 122 sit idle.
+- That's why **total parameters are 30B, but a single token activates only about 3.5B** — this is the source of "A3B" and of the "large capacity + small compute" trade-off.
+- **Costs / pitfalls**:
+  - At inference time, even with `temperature=0` (greedy), the **non-determinism of expert routing + floating-point accumulation** still causes the same input to produce slightly different outputs → this is the root cause of the forum observation that "the same adapter's score jitters when you submit it multiple times."
+  - When fine-tuning, you have to decide whether LoRA should cover the MoE-related layers and whether to untie the `MoE tie weights` (the 3rd-place report found untying them worked better).
+
+### 3.3 Native Reasoning Model (built-in `<think>`)
+
+- It is designed as a **unified reasoning model**: when faced with a problem, it **first generates a chain-of-thought (reasoning trace), then gives the conclusion**; whether it "thinks" can be controlled by a switch in the chat template.
+- **This is the foundation of the entire competition's strategy**: the model already works via chain-of-thought, so what you do is use SFT to **replace the "content of the chain-of-thought"** with your own designed, deterministic solution process, so that at evaluation time it reproduces this process on its own and computes the answer.
+- The engineering counterpart (which you'll see in `training.py`): `tokenizer.apply_chat_template(..., enable_thinking=True)`; the assistant segment of each training sample ends with `</think>\n\boxed{answer}`.
 
 ---
 
-## 5. Nemotron 模型家族介绍
+## 4. A Key Observation: Its Tokenizer Is "Very Token-Hungry"
 
-理解这个家族能帮你看懂比赛为什么这么设计。
+This isn't in the official spec table; it's a hands-on observation that the 1st-place team pointed out in their writeup, but it is extremely important:
 
-### 5.1 它是什么
+> **Nemotron's tokenizer is close to "one digit / binary character = one token."**
 
-**Nemotron 是 NVIDIA 的开源大模型产品线**,核心理念是 **"全开放"**:不仅开放**模型权重**,还开放**预训练/后训练数据集**和**训练配方(recipe)**。配套一整套开源工具链(统称 NeMo):
+- Consequence: on problems like **bit manipulation** (screens full of 8-bit binary strings) and **cryptarithm** (screens full of symbols), simply writing out the problem statement and intermediate results is extremely **token-consuming**.
+- And the competition's generation limit is only **7680 tokens**. So top solutions widely use one trick: **compress long binary strings into HEX** (`01101001` → `69`), cutting tokens by roughly 28% in one move, and spending the saved budget on searching more complex rules.
+- Remember this rule: in this competition, **"token-hungry tokenizer" × "7680 hard cap" = you must compress the trace**, and this is the core engineering constraint for cryptarithm/bit problems.
 
-| 工具 | 用途 |
+---
+
+## 5. Introducing the Nemotron Model Family
+
+Understanding this family helps you see why the competition is designed the way it is.
+
+### 5.1 What It Is
+
+**Nemotron is NVIDIA's open-source large-model product line**, whose core philosophy is **"fully open"**: it opens not only the **model weights**, but also the **pre-training / post-training datasets** and the **training recipes**. It comes with a full open-source toolchain (collectively called NeMo):
+
+| Tool | Purpose |
 |---|---|
-| NeMo Data Designer | 生成领域/任务特定的**合成数据** |
-| NeMo Curator | 数据**过滤与筛选**(文本/图像/视频/音频) |
-| NeMo RL | 大规模**强化学习**训练(GRPO 等) |
-| NeMo Gym | 搭建/管理 **RL 环境** |
+| NeMo Data Designer | Generate domain/task-specific **synthetic data** |
+| NeMo Curator | **Filter and curate** data (text / image / video / audio) |
+| NeMo RL | Large-scale **reinforcement learning** training (GRPO, etc.) |
+| NeMo Gym | Build / manage **RL environments** |
 
-> 这也是本赛题选 Nemotron 当基线的原因:**开放 + 统一基座 = 大家在一致条件下比技术、可复现**。
-> 比赛允许的方向(提示工程、数据筛选、合成数据、RL、轻量微调)几乎就是照着这套工具链列的。
+> This is also why the competition chose Nemotron as its baseline: **open + a unified base = everyone competes on technique under consistent conditions, and results are reproducible.**
+> The directions the competition allows (prompt engineering, data filtering, synthetic data, RL, lightweight fine-tuning) almost exactly mirror this toolchain.
 
-### 5.2 三个档位:Nano / Super / Ultra
+### 5.2 Three Tiers: Nano / Super / Ultra
 
-Nemotron 通常按规模分三档,对应不同部署场景:
+Nemotron is usually split into three tiers by scale, corresponding to different deployment scenarios:
 
-| 档位 | 定位 | 典型部署 |
+| Tier | Positioning | Typical deployment |
 |---|---|---|
-| **Nano** | 最小,**边缘/单卡** | 单张 GPU 即可跑(本场比赛用的就是这档) |
-| **Super** | 中等,**单张高端卡** | 单张数据中心级 GPU |
-| **Ultra** | 最大,**多卡/数据中心** | 多 GPU 集群 |
+| **Nano** | Smallest, **edge / single-GPU** | Runs on a single GPU (this is the tier used in this competition) |
+| **Super** | Medium, **single high-end GPU** | A single data-center-class GPU |
+| **Ultra** | Largest, **multi-GPU / data center** | Multi-GPU clusters |
 
-本场比赛用 **Nano**,正是因为它要能**在单张 GPU(含 Kaggle 提供的 Blackwell)上做推理**,跑数百道测试题。
+This competition uses **Nano** precisely because it needs to be able to **run inference on a single GPU (including the Blackwell that Kaggle provides)** across hundreds of test problems.
 
-### 5.3 谱系(帮助定位"第 3 代"在哪)
+### 5.3 Lineage (to Help Locate Where the "3rd Generation" Sits)
 
-NVIDIA 的 Nemotron 经历了几代演进,关键脉络:
+NVIDIA's Nemotron has gone through several generations of evolution; the key thread:
 
-- **早期 Nemotron-4**(2024):标准 Transformer 的开源大模型(如 340B、15B)。
-- **Llama-Nemotron / Nano-Super-Ultra**(2025 上半年):引入"**推理开关**"(reasoning on/off)、强化"思考"能力。
-- **混合架构路线**(2025):开始用 **Mamba-Transformer 混合**替换纯注意力,主打长上下文 + 高吞吐。
-- **Nemotron-3 Nano(本模型,2025-12)**:把上面几条线**合流**——混合 Mamba-Transformer + MoE + 统一 reasoning + 1M 上下文。可以理解成这条技术路线目前的集大成小模型。
+- **Early Nemotron-4** (2024): standard-Transformer open-source large models (e.g., 340B, 15B).
+- **Llama-Nemotron / Nano-Super-Ultra** (first half of 2025): introduced the "**reasoning switch**" (reasoning on/off) and strengthened "thinking" ability.
+- **The hybrid-architecture line** (2025): began replacing pure attention with a **Mamba-Transformer hybrid**, focusing on long context + high throughput.
+- **Nemotron-3 Nano (this model, 2025-12)**: **merges** all the lines above — hybrid Mamba-Transformer + MoE + unified reasoning + 1M context. Think of it as the current culmination of this technical line in a small model.
 
-> (谱系的代际划分是帮助理解的概括;真正以官方模型卡的规格为准。)
-
----
-
-## 6. 这些设计对**本场比赛**的具体影响(最该记住的一节)
-
-把上面所有点收束成"它如何塑造了这场比赛":
-
-1. **原生 1M 上下文,却被砍到 8192 / 生成 7680。**
-   模型本身长上下文绰绰有余,瓶颈完全是**比赛规则**人为设的。于是"解题过程能不能压进 7680 token"成了和"解得对不对"同等重要的事 → 催生 HEX 压缩、签名目录、"背 vs 算"取舍等一切技巧。
-
-2. **Mamba 成分 → 训练巨慢、环境难搞(算力门槛)。**
-   Mamba 的 kernel(`mamba_ssm` / `causal_conv1d` / Triton)在 **Blackwell GPU** 上兼容差。Kaggle 的 Blackwell 3 小时只能训约 2000 万 token;而第 1 名用自有 Blackwell 工作站训了 **超过 10 亿 token、上百小时**。这让比赛带上很强的**算力门槛**色彩(论坛 690161《Why GRPO is Painfully Slow》就是讲这个)。
-
-3. **MoE → 微调要做额外决策 + 评分有噪声。**
-   - LoRA target_modules 要不要覆盖 MoE/Mamba 投影层、要不要解绑 `MoE tie weights`、要不要训 `lm_head`(注意:有选手指出 lm_head 在 vLLM 推理时其实不生效)。
-   - 路由非确定性 → 同一 adapter 多次评测分数会抖 → **必须靠本地分层 CV,别只盯 Public LB**。
-
-4. **reasoning 原生 → "SFT 蒸馏解题 trace" 是顺水推舟。**
-   因为模型本就先想后答,你只需把"想"的内容换成确定性解题过程。所以全场主流方案都是:
-   **本地写确定性求解器 → 生成 CoT trace → SFT 进 LoRA → 让模型推理时自己复现**。
-
-5. **tokenizer 费 token → 压缩是刚需。**(见第 4 节)
-
-6. **2025-12 才发布的新模型 → 工具链不成熟。**
-   选手要自己处理大量环境依赖,主办方也得预打包 wheel。"刚出炉"既是它的卖点(技术先进),也是参赛的摩擦来源。
+> (The generational breakdown of the lineage is a simplification to aid understanding; the official model card's specs are the real authority.)
 
 ---
 
-## 7. 一句话总结
+## 6. The Concrete Impact of These Designs on This Competition
 
-> 一台 **30B 总参 / 3.5B 激活的 MoE、以 Mamba-2 为主体只夹少量注意力的混合架构、原生带思维链、支持 1M 上下文** 的开源推理小模型。
-> 容量大到能"背下"规则库,激活小到能在单卡上跑数百题;
-> 但 Mamba 让它在新硬件上**难训(算力门槛)**,MoE 让评分**带噪声**,tokenizer 又**费 token**——
-> 这三点叠加 7680 的生成上限,共同定义了这场比赛真正的工程战场。
+Pulling all the points above together into "how it shaped this competition":
+
+1. **Native 1M context, yet cut down to 8192 / 7680 generation.**
+   The model itself has more than enough long-context capacity; the bottleneck is entirely an **artificial competition rule**. As a result, "can the solution process be compressed into 7680 tokens" became as important as "is the answer correct" → giving rise to HEX compression, signature catalogs, the "memorize vs. compute" trade-off, and every other technique.
+
+2. **The Mamba component → extremely slow training, hard-to-set-up environment (a compute barrier).**
+   Mamba's kernels (`mamba_ssm` / `causal_conv1d` / Triton) have poor compatibility on the **Blackwell GPU**. Kaggle's Blackwell can only train about 20 million tokens in 3 hours; meanwhile the 1st-place team trained **over 1 billion tokens across hundreds of hours** on their own Blackwell workstation. This gives the competition a strong **compute-barrier** flavor (forum post 690161, "Why GRPO is Painfully Slow," is about exactly this).
+
+3. **MoE → extra fine-tuning decisions + noisy scoring.**
+   - Whether LoRA's target_modules should cover the MoE/Mamba projection layers, whether to untie the `MoE tie weights`, whether to train `lm_head` (note: some competitors pointed out that `lm_head` actually has no effect during vLLM inference).
+   - Routing non-determinism → the same adapter's score jitters across repeated evaluations → **you must rely on local stratified CV and not just watch the Public LB.**
+
+4. **Native reasoning → "SFT-distilling solution traces" is the path of least resistance.**
+   Because the model already thinks before it answers, you only need to swap the "thinking" content for a deterministic solution process. So the mainstream solution across the board was:
+   **write a deterministic solver locally → generate CoT traces → SFT into a LoRA → let the model reproduce them on its own at inference time.**
+
+5. **Token-hungry tokenizer → compression is a hard requirement.** (see Section 4)
+
+6. **A new model only released in 2025-12 → an immature toolchain.**
+   Competitors had to handle a large number of environment dependencies themselves, and the organizers had to pre-package wheels. Being "brand-new" was both its selling point (technically advanced) and a source of friction for participants.
+
+---
+
+## 7. One-Sentence Summary
+
+> An open-source small reasoning model that is **a 30B-total / 3.5B-active MoE, a hybrid architecture built primarily on Mamba-2 with only a small amount of attention mixed in, natively equipped with chain-of-thought, and supporting a 1M context.**
+> Its capacity is large enough to "memorize" a rule library, while its active size is small enough to run hundreds of problems on a single GPU;
+> but Mamba makes it **hard to train on new hardware (a compute barrier)**, MoE makes scoring **noisy**, and the tokenizer is **token-hungry** —
+> these three factors, stacked on top of the 7680 generation limit, together define the real engineering battlefield of this competition.
