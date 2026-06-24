@@ -1,0 +1,30 @@
+# Small single-GPU quickstart: distill CoT traces into a tiny model on your own data.
+# Runs on one consumer GPU (e.g. RTX 4080, 16 GB). Swap base_model / data_path for yours.
+#   tracedistill --cfg examples/configs/quickstart.yaml
+
+base_model: Qwen/Qwen2.5-0.5B-Instruct
+data_path: data/my_cot.csv          # CSV with columns: prompt, generated_cot, answer, type
+hard_types:                          # the problem families to emphasise in both phases
+  - cryptarithm_deduce
+  - cryptarithm_guess
+
+output_dir: runs/quickstart
+max_length: 2048
+seed: 42
+use_unsloth: false                   # plain transformers + peft (no unsloth needed)
+load_in_4bit: false
+trust_remote_code: false
+
+lora_rank: 32
+lora_alpha: 32
+lora_dropout: 0.0
+# target_modules: omitted -> architecture-aware autodetect (attention + Mamba + MLP)
+
+phase1:                              # PhaseConfig.train() overrides
+  learning_rate: 2.0e-4
+  num_train_epochs: 1
+phase2:                             # PhaseConfig.nudge() overrides
+  learning_rate: 5.0e-6
+  num_train_epochs: 1
+
+package_zip: false                   # set true (+ base_model_name_for_submission) for Kaggle

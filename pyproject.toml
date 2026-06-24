@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tracedistill"
+version = "0.1.0"
+description = "Distill teacher chains-of-thought into a LoRA adapter via a strict boxed-answer format contract and a two-phase Train→Nudge schedule (silver-medal NVIDIA Nemotron reasoning recipe)."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Daoyuan Li" }]
+keywords = [
+    "lora",
+    "chain-of-thought",
+    "reasoning",
+    "trace-distillation",
+    "sft",
+    "peft",
+    "nemotron",
+    "mamba",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "numpy",
+    "pandas",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+# Heavy ML stack — only needed to actually train (the core import stays light).
+train = [
+    "torch",
+    "transformers>=4.46",
+    "trl>=0.12",
+    "peft",
+    "datasets",
+    "accelerate",
+]
+test = [
+    "pytest",
+    "pandas",
+]
+
+[project.urls]
+Homepage = "https://github.com/DaoyuanLi2816/tracedistill"
+Issues = "https://github.com/DaoyuanLi2816/tracedistill/issues"
+
+[project.scripts]
+tracedistill = "tracedistill.run:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

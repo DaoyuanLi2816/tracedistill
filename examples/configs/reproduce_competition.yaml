@@ -1,0 +1,50 @@
+# The literal silver-medal setup: two-phase LoRA trace-distillation on the frozen
+# NVIDIA-Nemotron-3-Nano-30B-A3B base (hybrid Mamba-2 + MoE). Needs the competition's
+# Kaggle environment (a Blackwell GPU, offline wheels) — see competition/training.py for
+# the offline-install + ptxas patch this config does NOT perform.
+#   tracedistill --cfg examples/configs/reproduce_competition.yaml
+
+base_model: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
+data_path: /kaggle/input/datasets/dgxchen/nemotron-cot-tong/problem_ids_matched.csv
+hard_types:
+  - cryptarithm_deduce
+  - cryptarithm_guess
+  - equation_numeric_guess
+
+output_dir: /kaggle/working
+max_length: 8192
+seed: 42
+use_unsloth: true                    # the competition used Unsloth's FastLanguageModel
+load_in_4bit: false                  # pure BF16 — quantization would blur the distilled traces
+trust_remote_code: true              # Nemotron ships custom hybrid modeling code
+attn_implementation: eager
+
+lora_rank: 32                        # rank ≤ 32 hard cap, maxed for capacity
+lora_alpha: 32
+lora_dropout: 0.0
+target_modules:                      # attention + Mamba SSM + MLP (explicit here)
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - in_proj
+  - out_proj
+  - up_proj
+  - down_proj
+
+phase1:                              # Train: aggressive, clipping off, broad coverage
+  learning_rate: 2.0e-4
+  lr_scheduler_type: linear
+  warmup_steps: 0
+  max_grad_norm: 1.0e9
+  neftune_noise_alpha: 5.0
+phase2:                             # Nudge: 1/40 LR, cosine, clipping on, hard-focused
+  learning_rate: 5.0e-6
+  lr_scheduler_type: cosine
+  warmup_steps: 10
+  max_grad_norm: 1.0
+  neftune_noise_alpha: 5.0
+
+# Kaggle submission packaging:
+base_model_name_for_submission: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
+package_zip: true
