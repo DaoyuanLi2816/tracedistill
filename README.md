@@ -103,36 +103,41 @@ tracedistill --cfg examples/configs/reproduce_competition.yaml  # the medal setu
 ## Measured: does distilling the *trace* actually help? (GSM8K, one RTX 4080)
 
 [`examples/gsm8k_trace_distillation.py`](examples/gsm8k_trace_distillation.py) runs four
-arms on **Qwen2.5-0.5B-Instruct + LoRA** through the public API and scores **boxed-answer
-accuracy** on held-out GSM8K (greedy, parse `\boxed{}` exactly like a grader). The only
-difference between *answer-only SFT* and *trace-distill* is whether a reasoning trace sits
-between the `<think>` tags — so the gap isolates the value of distilling the trace.
+arms on a **base (non-instruct) Qwen2.5-0.5B + LoRA** through the public API and scores
+**boxed-answer accuracy** on held-out GSM8K (greedy, parse `\boxed{}` exactly like a
+grader). A *base* model is used on purpose: it's weak at the "reason then box" protocol
+zero-shot, so distilling a teacher trace has real room to help — the regime trace
+distillation is built for. The only difference between *answer-only SFT* and *trace-distill*
+is whether a reasoning trace sits between the `<think>` tags, so that gap isolates the value
+of distilling the trace.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/DaoyuanLi2816/tracedistill/main/docs/results.svg" alt="GSM8K results: answer-only SFT collapses to 4.5%; trace distillation reaches ~100% parse rate and doubles hard-problem accuracy" width="92%">
+  <img src="https://raw.githubusercontent.com/DaoyuanLi2816/tracedistill/main/docs/results.svg" alt="GSM8K results: trace distillation lifts a base model 9.5% to 35.0% (~3.7x); answer-only SFT, with no reasoning trace, drops to 3.5%" width="92%">
 </p>
 
 | arm | boxed accuracy | parse rate | hard-problem acc (≥5 steps) |
 |---|--:|--:|--:|
-| zero-shot (no training) | 32.0% | 64% | 6.1% |
-| answer-only SFT | **4.5%** | 100% | 6.1% |
-| **trace-distill, 1 phase** | 28.0% | 100% | **12.1%** |
-| **trace-distill, 2 phase (Train→Nudge)** | 29.5% | 99.5% | **12.1%** |
+| zero-shot (base, no training) | 9.5% | 30% | 0% |
+| answer-only SFT | **3.5%** | 100% | 0% |
+| **trace-distill, 1 phase** | 33.0% | 98.5% | **6.1%** |
+| **trace-distill, 2 phase (Train→Nudge)** | **35.0%** | 96.5% | **6.1%** |
 
-**Distil the trace, not the answer.** Answer-only SFT learns to *always* emit a `\boxed{}`
-(100% parse rate) but, taught to skip the reasoning, **collapses to 4.5%**. Trace
-distillation keeps the reasoning intact and **doubles accuracy on the hard, ≥5-step
-problems (6.1% → 12.1%)** while lifting the parse rate from 64% to ~100%.
+**Distil the trace, not the answer.** Trace distillation lifts the weak base from **9.5% →
+35.0% (≈3.7×)**. Answer-only SFT — the *same* boxed format but with **no reasoning trace** —
+instead *drops* to **3.5%** (it learns to always emit a `\boxed{}`, but having been taught to
+skip the reasoning, it just boxes wrong answers). The 10× gap between the two SFT arms (35.0%
+vs 3.5%) is purely the reasoning trace.
 
-**The Nudge rebalances.** Phase 2 recovers the mid-tier (3–4-step: 24.8% → 28.7%) without
-giving up the hard-tier gain, edging 1-phase 28.0% → 29.5%.
+**Distillation also fixes the format.** Zero-shot, the base emits a parseable `\boxed{}` only
+30% of the time; after distillation, ~97%. And ≥5-step hard problems go from **0% → 6.1%** —
+only the trace-distilled arms crack any at all.
 
-**Honest caveat.** Qwen2.5-0.5B already has strong native GSM8K chain-of-thought, and the
-terse GSM8K solutions are a weak teacher, so overall accuracy stays just under the 32%
-zero-shot baseline — the wins here are *reliability* (≈100% parse), *hard-slice* accuracy
-(2×), and *not* destroying the model the way answer-only SFT does. On the competition's
-harder, code-derived puzzles — where the base model can't already solve them and a strong
-teacher trace exists — the same recipe took **silver**.
+**The Nudge adds a little more.** Phase 2 edges 1-phase **33.0% → 35.0%**.
+
+**Honest caveat.** This is a 0.5B model on GSM8K, so the absolute numbers are modest; the
+result demonstrates the *relative* value of distilling the trace. It's the same recipe that
+took **silver** on the competition's harder, code-derived puzzles — where the fixed base
+likewise can't solve them zero-shot and the teacher trace encodes the procedure.
 
 ```bash
 pip install "tracedistill[train]" datasets

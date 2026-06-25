@@ -1,8 +1,10 @@
 """Headline experiment — does trace distillation beat answer-only SFT?
 
-Runs four arms on **Qwen2.5-0.5B-Instruct + LoRA**, on a single RTX 4080 (16 GB), and
-measures **boxed-answer accuracy** on held-out **GSM8K** (greedy decode, parse
-``\\boxed{}`` exactly like the competition grader):
+Runs four arms on a **base (non-instruction-tuned) model — Qwen2.5-0.5B — + LoRA**, on a
+single RTX 4080 (16 GB), and measures **boxed-answer accuracy** on held-out **GSM8K**
+(greedy decode, parse ``\\boxed{}`` exactly like the competition grader). A base model is
+used deliberately: it is weak at the "reason then box" protocol zero-shot, so distilling a
+teacher trace has real room to help — the regime trace distillation is built for.
 
   1. **zero-shot**            — the base model, no training
   2. **answer-only SFT**      — distil ``question -> \\boxed{answer}`` with NO reasoning
@@ -40,7 +42,10 @@ from trl import SFTConfig, SFTTrainer
 import tracedistill as td
 from tracedistill.training import PhaseConfig, TwoPhaseConfig, make_formatting_func, train_two_phase
 
-MODEL = "Qwen/Qwen2.5-0.5B-Instruct"
+# A *base* (non-instruction-tuned) model: weak at the "reason then \boxed{}" protocol
+# zero-shot, so distilling a teacher trace has real room to help — the regime trace
+# distillation is built for (mirrors "the base can't solve it, so distill the procedure").
+MODEL = "Qwen/Qwen2.5-0.5B"
 _BOXED = re.compile(r"\\boxed\{([^}]*)\}")
 _GSM_GOLD = re.compile(r"####\s*([\-0-9,\.]+)")
 
@@ -116,7 +121,10 @@ def evaluate(model, tok, test_df: pd.DataFrame, max_new_tokens: int) -> dict:
     correct = parsed = 0
     by_type_total: dict[str, int] = {}
     by_type_correct: dict[str, int] = {}
-    for _, row in test_df.iterrows():
+    n_total = len(test_df)
+    for i, (_, row) in enumerate(test_df.iterrows()):
+        if i % 25 == 0:
+            print(f"  eval {i}/{n_total} ...", flush=True)  # the base model rarely emits EOS, so each greedy decode runs the full budget
         messages = [{"role": "user", "content": str(row["prompt"]) + td.DEFAULT_PROMPT_SUFFIX}]
         text = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         inputs = tok(text, return_tensors="pt").to(model.device)
@@ -168,14 +176,17 @@ def answer_only_records(df) -> list[dict]:
 
 # ------------------------------------------------------------------------------- main
 def main():
+    global MODEL
     ap = argparse.ArgumentParser()
     ap.add_argument("--train-size", type=int, default=1500)
     ap.add_argument("--test-size", type=int, default=400)
     ap.add_argument("--epochs", type=int, default=2)
     ap.add_argument("--max-new-tokens", type=int, default=400)
     ap.add_argument("--out", default="output/gsm8k")
+    ap.add_argument("--model", default=MODEL, help="base model id (default: a non-instruct base)")
     ap.add_argument("--smoke", action="store_true", help="tiny end-to-end sanity run")
     args = ap.parse_args()
+    MODEL = args.model
     if args.smoke:
         args.train_size, args.test_size, args.epochs, args.max_new_tokens = 60, 20, 1, 200
     os.makedirs(args.out, exist_ok=True)
