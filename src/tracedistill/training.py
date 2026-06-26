@@ -16,13 +16,17 @@ use the stratified sampler, and apply NEFTune.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import Callable, Iterable, Sequence
 
 import pandas as pd
 from datasets import Dataset as HFDataset
 from trl import SFTConfig, SFTTrainer
 from torch.utils.data import DataLoader
+
+# trl renamed SFTConfig's `max_seq_length` to `max_length`; pick whichever this trl has,
+# so the library works across the supported trl range.
+_SFT_LEN_FIELD = "max_length" if any(f.name == "max_length" for f in fields(SFTConfig)) else "max_seq_length"
 
 from .data import two_phase_split
 from .formatting import DEFAULT_PROMPT_SUFFIX, build_records
@@ -157,7 +161,7 @@ def _sft_config(phase: PhaseConfig, cfg: TwoPhaseConfig, output_dir: str) -> SFT
         learning_rate=phase.learning_rate,
         lr_scheduler_type=phase.lr_scheduler_type,
         warmup_steps=phase.warmup_steps,
-        max_length=cfg.max_length,
+        **{_SFT_LEN_FIELD: cfg.max_length},
         adam_beta1=0.9,
         adam_beta2=0.95,
         adam_epsilon=1e-8,

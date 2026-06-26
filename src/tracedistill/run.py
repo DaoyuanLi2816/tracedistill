@@ -110,12 +110,14 @@ def _build_model(cfg: RunConfig):
     tokenizer = AutoTokenizer.from_pretrained(cfg.base_model, trust_remote_code=cfg.trust_remote_code)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-    model = AutoModelForCausalLM.from_pretrained(
-        cfg.base_model,
-        dtype=torch.bfloat16 if cfg.bf16 else None,
-        trust_remote_code=cfg.trust_remote_code,
-        attn_implementation=cfg.attn_implementation,
-    )
+    # transformers renamed the `torch_dtype` argument to `dtype`; try the new name and
+    # fall back to the old one so the library works across the supported transformers range.
+    _dt = torch.bfloat16 if cfg.bf16 else None
+    _load_kwargs = dict(trust_remote_code=cfg.trust_remote_code, attn_implementation=cfg.attn_implementation)
+    try:
+        model = AutoModelForCausalLM.from_pretrained(cfg.base_model, dtype=_dt, **_load_kwargs)
+    except TypeError:
+        model = AutoModelForCausalLM.from_pretrained(cfg.base_model, torch_dtype=_dt, **_load_kwargs)
     targets = list(cfg.target_modules) if cfg.target_modules else (
         target_modules_from_model(model) or DEFAULT_TARGET_MODULES
     )
