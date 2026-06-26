@@ -25,7 +25,7 @@ The official training set `train.csv` has only **3 columns**:
 
 ⚠️ **Note: the official `train.csv` has no "problem category" column.** Which family a problem belongs to, and what its hidden rule is, **must all be reverse-engineered by the competitor**. "Sorting these 9,500 problems into families and figuring out the playbook for each" is itself the first hurdle of the competition.
 
-> In `solution/training.py` you'll see a `type` column — that comes from a community-curated, third-party reverse-engineered dataset
+> In `competition/training.py` you'll see a `type` column — that comes from a community-curated, third-party reverse-engineered dataset
 > (`dgxchen/nemotron-cot-tong`), and is **not an original official field**.
 
 ### 1.2 Training Set Size and Category Distribution

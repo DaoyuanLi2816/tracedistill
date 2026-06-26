@@ -13,7 +13,7 @@ import random
 import re
 from collections import defaultdict
 
-# Verbatim from code/training.py (the grader's suffix, reused at train time).
+# Verbatim from competition/training.py (the grader's suffix, reused at train time).
 PROMPT_SUFFIX = '\nPlease put your final answer inside `\\boxed{}`. For example: `\\boxed{your answer}`'
 
 

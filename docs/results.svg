@@ -30,12 +30,12 @@
     <!-- trace-distill 1 phase 33.0 -> 286px -->
     <text x="238" y="201" fill="#c9d1d9" text-anchor="end">trace-distill · 1 phase</text>
     <rect x="250" y="184" width="286" height="26" rx="4" fill="#4a7c12"/>
-    <text x="544" y="202" fill="#9aa3af">33.0%  ·  parse 99%</text>
+    <text x="544" y="202" fill="#9aa3af">33.0%  ·  parse 98.5%</text>
 
     <!-- trace-distill 2 phase 35.0 -> 304px -->
     <text x="238" y="245" fill="#c9d1d9" text-anchor="end">trace-distill · 2 phase</text>
     <rect x="250" y="228" width="304" height="26" rx="4" fill="#76B900"/>
-    <text x="562" y="246" fill="#e6edf3" font-weight="600">35.0%  ·  parse 97%</text>
+    <text x="562" y="246" fill="#e6edf3" font-weight="600">35.0%  ·  parse 96.5%</text>
   </g>
 
   <!-- callout -->

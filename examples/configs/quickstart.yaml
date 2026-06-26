@@ -2,7 +2,7 @@
 # Runs on one consumer GPU (e.g. RTX 4080, 16 GB). Swap base_model / data_path for yours.
 #   tracedistill --cfg examples/configs/quickstart.yaml
 
-base_model: Qwen/Qwen2.5-0.5B-Instruct
+base_model: Qwen/Qwen2.5-0.5B       # a base (non-instruct) model — distillation has the most room on a weak base
 data_path: data/my_cot.csv          # CSV with columns: prompt, generated_cot, answer, type
 hard_types:                          # the problem families to emphasise in both phases
   - cryptarithm_deduce

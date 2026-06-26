@@ -132,7 +132,7 @@ Fixed evaluation parameters (be sure to align training with these):
 
 ## 4. Solution Walkthrough
 
-> This section follows the order of the execution pipeline, presenting the **two-phase fine-tuning, Train → Nudge**, implemented in this solution's `solution/training.py`, with the emphasis on "why it's designed this way."
+> This section follows the order of the execution pipeline, presenting the **two-phase fine-tuning, Train → Nudge**, implemented in this solution's `competition/training.py`, with the emphasis on "why it's designed this way."
 
 ### 4.1 Top-Level Mental Model: Trace-Distillation SFT
 

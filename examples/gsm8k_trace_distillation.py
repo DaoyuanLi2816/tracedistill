@@ -178,10 +178,10 @@ def answer_only_records(df) -> list[dict]:
 def main():
     global MODEL
     ap = argparse.ArgumentParser()
-    ap.add_argument("--train-size", type=int, default=1500)
-    ap.add_argument("--test-size", type=int, default=400)
-    ap.add_argument("--epochs", type=int, default=2)
-    ap.add_argument("--max-new-tokens", type=int, default=400)
+    ap.add_argument("--train-size", type=int, default=1200)
+    ap.add_argument("--test-size", type=int, default=200)
+    ap.add_argument("--epochs", type=int, default=3)
+    ap.add_argument("--max-new-tokens", type=int, default=320)
     ap.add_argument("--out", default="output/gsm8k")
     ap.add_argument("--model", default=MODEL, help="base model id (default: a non-instruct base)")
     ap.add_argument("--smoke", action="store_true", help="tiny end-to-end sanity run")

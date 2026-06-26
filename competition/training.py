@@ -56,13 +56,13 @@ LORA_DROPOUT = 0.0       # Dropout off during training: distillation must replic
 TARGET_MODULES = ["q_proj", "k_proj", "v_proj", "o_proj",
                   "in_proj", "out_proj", "up_proj", "down_proj"] # lm_head is excluded: saves rank budget + changing the output layer is risky
 
-# ── Phase 1 "Train": aggressive coarse training, optimizing coverage and speed ───────────────────────────────  see §7
+# ── Phase 1 "Train": aggressive coarse training, optimizing coverage and speed ───────────────────────────────  see docs/solution.md §4
 TRAIN_LR            = 2e-4    # Large learning rate, hammer the traces hard into the LoRA
 TRAIN_BATCH         = 1       # One sample per GPU (the 30B model is memory-tight)
 TRAIN_GRAD_ACCUM    = 8       # Gradient accumulation of 8 steps -> effective batch = 1×8 = 8
 TRAIN_EPOCHS        = 1       # One pass over the data only
 
-# ── Phase 2 "Nudge": small-step refinement, optimizing hard-problem accuracy and stability ──────────────────────────  see §8
+# ── Phase 2 "Nudge": small-step refinement, optimizing hard-problem accuracy and stability ──────────────────────────  see docs/solution.md §4
 NUDGE_LR            = 5e-6    # Tiny learning rate, 1/40 of Phase 1, only "nudge" rather than overturn
 NUDGE_BATCH         = 1
 NUDGE_GRAD_ACCUM    = 8
@@ -296,7 +296,7 @@ print("\nSanity checks passed.")
 
 # %%
 # ════════════════════════════════════════════════════════════════════════════
-#  Training infrastructure: sample construction + chat template + stratified sampler     see docs/solution.md §5, §6
+#  Training infrastructure: sample construction + chat template + stratified sampler     see docs/solution.md §4
 # ════════════════════════════════════════════════════════════════════════════
 import math, re
 from collections import defaultdict
@@ -307,7 +307,7 @@ from torch.utils.data import DataLoader, Sampler
 
 def build_records(source_df):
     """Convert a dataframe into SFT samples, and return an equal-length list of type labels (for the stratified sampler).
-    This function is the place in the whole file you can least afford to get wrong: a single wrong character in the format can drop answer extraction to 0 points at inference.  see §5
+    This function is the place in the whole file you can least afford to get wrong: a single wrong character in the format can drop answer extraction to 0 points at inference.  see docs/solution.md §4
     """
     records, types = [], []
     for _, row in source_df.iterrows():
@@ -358,7 +358,7 @@ def formatting_prompts_func(example):
 
 def build_stratified_index_order(labels, batch_size, seed):
     """Precompute a "type-balanced" sample order: make each effective batch contain a bit of every type as much as possible,
-    avoiding the gradient-direction jitter that comes from a batch made entirely of one problem type. Core technique = dealing cards (round-robin).  see §6
+    avoiding the gradient-direction jitter that comes from a batch made entirely of one problem type. Core technique = dealing cards (round-robin).  see docs/solution.md §4
     """
     # 1) Bucket sample indices by type
     by_label = defaultdict(list)
@@ -432,11 +432,11 @@ print("Training infrastructure ready.")
 
 # %%
 # ════════════════════════════════════════════════════════════════════════════
-#  Phase 1 "Train": large learning rate + gradient clipping off, aggressive coarse training for coverage   see docs/solution.md §7
+#  Phase 1 "Train": large learning rate + gradient clipping off, aggressive coarse training for coverage   see docs/solution.md §4
 # ════════════════════════════════════════════════════════════════════════════
 import gc, time
 
-# Build samples from the Epoch1 set (§5) and convert them to an HF Dataset
+# Build samples from the Epoch1 set and convert them to an HF Dataset
 epoch1_records, epoch1_types = build_records(epoch1_df)
 epoch1_dataset = HFDataset.from_list(epoch1_records)
 print(f"Epoch 1 records: {len(epoch1_records)}")
@@ -455,7 +455,7 @@ training_args = SFTConfig(
     adam_beta2=0.95,                    # Smaller than the default 0.999: shorter momentum memory, more sensitive to recent gradients (common for LLMs)
     adam_epsilon=1e-8,
     weight_decay=0.0,                   # No weight decay
-    max_grad_norm=1e9,                  # ★ 1 billion = effectively disable gradient clipping: Phase 1 is not afraid of big steps, aggressiveness is exactly what we want  §7④
+    max_grad_norm=1e9,                  # ★ 1 billion = effectively disable gradient clipping: Phase 1 is not afraid of big steps, aggressiveness is exactly what we want
     logging_steps=50,
     save_strategy="no",                 # No checkpoints during training (save manually at the end)
     bf16=True,
@@ -465,11 +465,11 @@ training_args = SFTConfig(
     remove_unused_columns=False,        # Keep the custom column (messages), do not let TRL drop it automatically
     seed=SEED,
     report_to="none",                   # Do not report to wandb etc.
-    packing=False,                      # ★ No packing: prevent tokens of different problems from cross-contaminating across samples, keep clean sample boundaries  §7⑥
-    neftune_noise_alpha=5.0,            # ★ NEFTune: embedding noise regularization, resisting rote memorization of trivia  see §7 term expansion
+    packing=False,                      # ★ No packing: prevent tokens of different problems from cross-contaminating across samples, keep clean sample boundaries
+    neftune_noise_alpha=5.0,            # ★ NEFTune: embedding noise regularization, resisting rote memorization of trivia  see docs/solution.md §4
 )
 
-# Effective batch = 1×8 = 8; compute the type-balanced sample order from it (§6)
+# Effective batch = 1×8 = 8; compute the type-balanced sample order from it
 eff_batch_1   = TRAIN_BATCH * TRAIN_GRAD_ACCUM
 strat_order_1 = build_stratified_index_order(epoch1_types, eff_batch_1, SEED)
 print(f"Effective batch size: {eff_batch_1}")
@@ -496,7 +496,7 @@ import torch; torch.cuda.empty_cache()
 
 # %%
 # Save the Phase 1 adapter once on its own. Two purposes: ① insurance (if Phase 2 trains into a wreck, fall back to this);
-# ② treat "Phase 1 only" as a submittable comparison candidate, to make A/B of single-phase vs two-phase easy.  see end of §7
+# ② treat "Phase 1 only" as a submittable comparison candidate, to make A/B of single-phase vs two-phase easy.  see docs/solution.md §4
 PHASE1_ADAPTER_DIR = "/kaggle/working/phase1_adapter"
 model.save_pretrained(PHASE1_ADAPTER_DIR)
 tokenizer.save_pretrained(PHASE1_ADAPTER_DIR)
@@ -511,7 +511,7 @@ for fname in os.listdir(PHASE1_ADAPTER_DIR):
 # With an ultra-low LR, nudge the already-trained adapter on "all hard problems + n easy problems of each type".
 
 # %%
-# ⚠️ This whole block is commented out with triple quotes = an experiment the author tried but ultimately abandoned.  see docs/solution.md §8.4
+# ⚠️ This whole block is commented out with triple quotes = an experiment the author tried but ultimately abandoned.  see docs/solution.md §4
 #    The idea: during Phase 2 (refinement), raise the LoRA dropout from 0 to 0.1, adding some regularization to prevent overfitting.
 #    Ultimately not enabled → Phase 2's regularization relies only on NEFTune + a small lr, with no dropout.
 #    Retrospective value: this is a ready-made, restartable comparison experiment.
@@ -532,7 +532,7 @@ print(f"LoRA dropout set to 0.1 on {_updated} layers.")"""
 
 # %%
 # ════════════════════════════════════════════════════════════════════════════
-#  Phase 2 "Nudge": ultra-low lr + gradient clipping on, refine on hard problems while preventing forgetting of easy ones  see §8
+#  Phase 2 "Nudge": ultra-low lr + gradient clipping on, refine on hard problems while preventing forgetting of easy ones  see docs/solution.md §4
 #  Note: continue training on the "same model" left after Phase 1, with LoRA weights carrying on from Phase 1, no reload.
 # ════════════════════════════════════════════════════════════════════════════
 import gc, time
@@ -543,7 +543,7 @@ nudge_dataset = HFDataset.from_list(nudge_records)
 print(f"Nudge records: {len(nudge_records)}")
 print("Type distribution:", dict(sorted(pd.Series(nudge_types).value_counts().to_dict().items())))
 
-# Compared with Phase 1, the differences are all about "stay stable + refine" (see the §8 comparison table):
+# Compared with Phase 1, the differences are all about "stay stable + refine" (see the comparison table):
 nudge_args = SFTConfig(
     output_dir="/kaggle/working/phase2_output",
     num_train_epochs=NUDGE_EPOCHS,
@@ -599,7 +599,7 @@ import torch; torch.cuda.empty_cache()
 
 # %%
 # ════════════════════════════════════════════════════════════════════════════
-#  Save the final adapter + patch it + package submission.zip    see docs/solution.md §9
+#  Save the final adapter + patch it + package submission.zip    see docs/solution.md §4
 # ════════════════════════════════════════════════════════════════════════════
 import json, os, shutil, zipfile
 
@@ -644,7 +644,7 @@ import os, shutil, glob
 
 KEEP = {
     "/kaggle/working/submission.zip",     # The final submission package
-    "/kaggle/working/phase1_adapter",     # Keep the Phase 1 adapter as a comparison candidate (see end of §7)
+    "/kaggle/working/phase1_adapter",     # Keep the Phase 1 adapter as a comparison candidate (see docs/solution.md §4)
 }
 
 for path in glob.glob("/kaggle/working/*"):
