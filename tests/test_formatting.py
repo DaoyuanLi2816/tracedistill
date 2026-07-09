@@ -65,6 +65,27 @@ def test_strip_boxed():
     assert td.strip_boxed("no box here") == "no box here"
 
 
+def test_strip_boxed_handles_nested_braces():
+    # The frozen `reference_impl.py` oracle uses `\\boxed\{[^}]*\}`, which stops at the
+    # *first* `}` and leaves a dangling fragment for any boxed answer containing its own
+    # braces (fractions, sets, intervals -- common in math reasoning traces). The live
+    # library tracks brace depth instead, so it must NOT match the oracle here; this is
+    # a deliberate improvement, not drift (see tests/reference_impl.py's own docstring).
+    assert td.strip_boxed("ans \\boxed{\\frac{1}{2}} done") == "ans  done"
+    assert td.strip_boxed("set \\boxed{\\{1, 2, 3\\}} done") == "set  done"
+    assert td.strip_boxed("nested \\boxed{\\sqrt{\\frac{1}{2}}} done") == "nested  done"
+    # An unterminated \boxed{ (a truncated trace) is left alone rather than consuming
+    # the rest of the string.
+    assert td.strip_boxed("truncated \\boxed{oops") == "truncated \\boxed{oops"
+
+
+def test_build_record_reattaches_answer_cleanly_after_nested_boxed():
+    rec = build_record("Q?", "reasoning \\boxed{\\frac{1}{2}} more reasoning", 42)
+    asst = rec["messages"][1]["content"]
+    assert "{2}}" not in asst  # no dangling fragment from the stripped upstream answer
+    assert asst == "reasoning  more reasoning\n</think>\n\\boxed{42}"
+
+
 def test_build_records_accepts_list_of_dicts():
     rows = [
         {"prompt": "p", "generated_cot": "reasoning here", "answer": 7, "type": "t1"},

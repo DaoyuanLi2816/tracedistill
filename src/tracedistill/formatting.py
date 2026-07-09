@@ -46,13 +46,42 @@ DEFAULT_PROMPT_SUFFIX = (
     "For example: `\\boxed{your answer}`"
 )
 
-_BOXED_RE = re.compile(r"\\boxed\{[^}]*\}")
+_BOXED_START_RE = re.compile(r"\\boxed\{")
 
 
 def strip_boxed(text: str) -> str:
     """Remove every ``\\boxed{...}`` span from *text* (used to drop the upstream trace's
-    own final answer before re-attaching the authoritative one)."""
-    return _BOXED_RE.sub("", text)
+    own final answer before re-attaching the authoritative one).
+
+    Tracks brace depth rather than matching up to the first ``}``, so nested braces
+    inside the boxed content (``\\boxed{\\frac{1}{2}}``, ``\\boxed{\\{1, 2, 3\\}}``) are
+    removed in full instead of leaving a dangling ``{2}}``-style fragment behind — math
+    reasoning traces box fractions, sets, and intervals often enough that this is not an
+    edge case. A ``\\boxed{`` with no matching ``}`` (a truncated trace) is left as-is
+    rather than silently consuming the rest of the string.
+    """
+    out: list[str] = []
+    i, n = 0, len(text)
+    while i < n:
+        m = _BOXED_START_RE.match(text, i)
+        if not m:
+            out.append(text[i])
+            i += 1
+            continue
+        depth = 1
+        j = m.end()
+        while j < n and depth > 0:
+            if text[j] == "{":
+                depth += 1
+            elif text[j] == "}":
+                depth -= 1
+            j += 1
+        if depth == 0:
+            i = j  # balanced: drop the whole \boxed{...} span
+        else:
+            out.append(text[i : m.end()])  # unbalanced: keep the literal "\boxed{"
+            i = m.end()
+    return "".join(out)
 
 
 def build_record(
@@ -75,7 +104,7 @@ def build_record(
     cot = str(cot)
     if not cot or cot == "nan" or len(cot.strip()) < min_cot_len:
         return None
-    cot_cleaned = _BOXED_RE.sub("", cot).rstrip()
+    cot_cleaned = strip_boxed(cot).rstrip()
     user_content = str(prompt) + prompt_suffix
     asst_content = cot_cleaned + f"\n</think>\n\\boxed{{{str(answer)}}}"
     return {
