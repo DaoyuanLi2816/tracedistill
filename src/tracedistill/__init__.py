@@ -26,7 +26,7 @@ from .lora import (
 )
 from .sampling import PrecomputedOrderSampler, build_stratified_index_order
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 # Heavy (torch/trl) symbols are imported lazily so `import tracedistill` works with only
 # the light core installed.

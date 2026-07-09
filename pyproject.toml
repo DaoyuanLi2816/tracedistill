@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tracedistill"
-version = "0.1.0"
+version = "0.1.1"
 description = "Distill teacher chains-of-thought into a LoRA adapter via a strict boxed-answer format contract and a two-phase Train→Nudge schedule (silver-medal NVIDIA Nemotron reasoning recipe)."
 readme = "README.md"
 requires-python = ">=3.9"
