@@ -40,7 +40,14 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import SFTConfig, SFTTrainer
 
 import tracedistill as td
-from tracedistill.training import PhaseConfig, TwoPhaseConfig, make_formatting_func, train_two_phase
+from tracedistill.training import (
+    PhaseConfig,
+    PromptMaskedCollator,
+    TwoPhaseConfig,
+    render_prompt_completion,
+    tokenize_with_masked_prompt,
+    train_two_phase,
+)
 
 # A *base* (non-instruction-tuned) model: weak at the "reason then \boxed{}" protocol
 # zero-shot, so distilling a teacher trace has real room to help — the regime trace
@@ -151,7 +158,16 @@ def evaluate(model, tok, test_df: pd.DataFrame, max_new_tokens: int) -> dict:
 
 # --------------------------------------------------------------------------- training
 def _sft(model, tok, records, lr, epochs, bs, out):
-    ds = HFDataset.from_list(records)
+    # Mask the user turn out of the loss the same way train_two_phase does (see
+    # tracedistill.training.render_prompt_completion / tokenize_with_masked_prompt) --
+    # a plain formatting_func would train on the question text too.
+    rows = []
+    for rec in records:
+        prompt, completion = render_prompt_completion(tok, rec["messages"], enable_thinking=True)
+        row = tokenize_with_masked_prompt(tok, prompt, completion, max_length=1024)
+        if row is not None:
+            rows.append(row)
+    ds = HFDataset.from_list(rows)
     args = SFTConfig(
         output_dir=out, num_train_epochs=epochs, per_device_train_batch_size=bs,
         gradient_accumulation_steps=2, learning_rate=lr, lr_scheduler_type="linear",
@@ -160,7 +176,7 @@ def _sft(model, tok, records, lr, epochs, bs, out):
         neftune_noise_alpha=5.0, max_grad_norm=1e9,
     )
     SFTTrainer(model=model, args=args, train_dataset=ds, processing_class=tok,
-               formatting_func=make_formatting_func(tok)).train()
+               data_collator=PromptMaskedCollator(pad_token_id=tok.pad_token_id)).train()
 
 
 def answer_only_records(df) -> list[dict]:
