@@ -16,7 +16,8 @@ The only difference between arms 2 and 3 is whether a reasoning *trace* sits bet
 ``<think>`` tags, so the gap isolates the value of distilling the trace.
 
 Everything goes through tracedistill's public API (``build_records``, ``two_phase_split``,
-``make_formatting_func``, ``train_two_phase``), so this doubles as a usage example.
+``render_prompt_completion``, ``tokenize_with_masked_prompt``, ``train_two_phase``), so this
+doubles as a usage example.
 
 Reproduce (~1h on one RTX 4080):
     pip install -e .[train] datasets
