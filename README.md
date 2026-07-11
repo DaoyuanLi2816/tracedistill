@@ -21,9 +21,9 @@ data. The medal-winning code is preserved verbatim in [`competition/`](competiti
 [pinned to this library byte-for-byte](tests/) by golden tests.
 
 Give it `(problem, teacher chain-of-thought, answer)` triples and it trains a LoRA adapter
-that **reasons step-by-step and then emits a parseable `\boxed{}`** — the recipe that wins
-"the grader can't run your code, the solving procedure has to live inside the model's
-chain-of-thought" tasks.
+that **reasons step-by-step and then emits a parseable `\boxed{}`** — the recipe for tasks
+where the grader can't run your code, so the solving procedure has to live inside the
+model's own chain-of-thought.
 
 ---
 
@@ -139,6 +139,16 @@ result demonstrates the *relative* value of distilling the trace. It's the same 
 took **silver** on the competition's harder, code-derived puzzles — where the fixed base
 likewise can't solve them zero-shot and the teacher trace encodes the procedure.
 
+**Provenance of these specific numbers.** They were captured with an earlier revision of
+this script's `SFTTrainer` call, before a later fix (see the git history of
+[`training.py`](src/tracedistill/training.py)) that restricts the SFT loss to the assistant
+turn only — the version used here also let some loss gradient fall on the user's question
+text, rather than purely on the `<think>…</think>\boxed{}` span being distilled. That
+applied identically to all three trained arms, so the relative story above (trace-distill
+≫ answer-only, 2-phase ≥ 1-phase) is expected to hold, but the absolute percentages haven't
+been re-measured since the fix and may shift on a re-run; treat them as directional rather
+than final.
+
 ```bash
 pip install "tracedistill[train]" datasets
 python examples/gsm8k_trace_distillation.py        # ~1h on one RTX 4080 (16 GB)
@@ -169,7 +179,7 @@ full methodology, and [`competition/`](competition/) for the verbatim solution.
 - [`competition/`](competition/) — the original silver-medal solution, **unmodified**.
 - [`tests/`](tests/) — **golden tests**: `tests/reference_impl.py` holds verbatim copies of
   the competition's `build_records` / `build_stratified_index_order`, and the suite asserts
-  `tracedistill` reproduces them **byte-for-byte** over hundreds of fuzzed cases. 46 tests,
+  `tracedistill` reproduces them **byte-for-byte** over hundreds of fuzzed cases. 48 tests,
   torch-free, run in well under a second.
 
 The official Kaggle **Certificate of Achievement** — Silver Medalist, 65th of 4182 teams:
