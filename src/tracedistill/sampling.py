@@ -17,14 +17,12 @@ from __future__ import annotations
 import math
 import random
 from collections import defaultdict
-from typing import Iterable, Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 
 __all__ = ["build_stratified_index_order", "PrecomputedOrderSampler"]
 
 
-def build_stratified_index_order(
-    labels: Sequence[str], batch_size: int, seed: int
-) -> list[int]:
+def build_stratified_index_order(labels: Sequence[str], batch_size: int, seed: int) -> list[int]:
     """Return a permutation of ``range(len(labels))`` in which each consecutive
     ``batch_size`` block is type-balanced.
 

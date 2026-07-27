@@ -16,8 +16,9 @@ use the stratified sampler, and apply NEFTune.
 
 from __future__ import annotations
 
+import os
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, fields
-from typing import Any, Callable, Sequence
 
 import pandas as pd
 import torch
@@ -25,14 +26,18 @@ from datasets import Dataset as HFDataset
 from torch.utils.data import DataLoader
 from trl import SFTConfig, SFTTrainer
 
-# trl renamed SFTConfig's `max_seq_length` to `max_length`; pick whichever this trl has,
-# so the library works across the supported trl range.
-_SFT_LEN_FIELD = "max_length" if any(f.name == "max_length" for f in fields(SFTConfig)) else "max_seq_length"
-
 from .data import two_phase_split
 from .formatting import DEFAULT_PROMPT_SUFFIX, build_records
-from .lora import DEFAULT_TARGET_MODULES, target_modules_from_model
+from .masking import render_prompt_completion, tokenize_with_masked_prompt
 from .sampling import PrecomputedOrderSampler, build_stratified_index_order
+
+# trl renamed SFTConfig's `max_seq_length` to `max_length`; pick whichever this trl has,
+# so the library works across the supported trl range.
+_SFT_LEN_FIELD = (
+    "max_length"
+    if any(field_.name == "max_length" for field_ in fields(SFTConfig))
+    else "max_seq_length"
+)
 
 __all__ = [
     "PhaseConfig",
@@ -62,12 +67,12 @@ class PhaseConfig:
     logging_steps: int = 50
 
     @classmethod
-    def train(cls, **overrides) -> "PhaseConfig":
+    def train(cls, **overrides) -> PhaseConfig:
         """Phase 1 defaults: aggressive, clipping off, broad coverage."""
         return cls(**overrides)
 
     @classmethod
-    def nudge(cls, **overrides) -> "PhaseConfig":
+    def nudge(cls, **overrides) -> PhaseConfig:
         """Phase 2 defaults: 1/40 LR, cosine, warmup, clipping on, hard-focused."""
         base = dict(
             learning_rate=5e-6,
@@ -136,57 +141,6 @@ def make_formatting_func(tokenizer, *, enable_thinking: bool = True) -> Callable
     return formatting_prompts_func
 
 
-def render_prompt_completion(
-    tokenizer, messages: Sequence[dict], *, enable_thinking: bool = True
-) -> tuple[str, str]:
-    """Split a ``[user, assistant]`` message pair into ``(prompt, completion)`` strings at
-    the exact point the chat template opens the assistant turn (``<think>`` included, when
-    ``enable_thinking`` is on), so a caller can mask everything before it out of the loss.
-
-    ``completion`` is defined as ``full[len(prompt):]``, where *prompt* is
-    ``messages[:1]`` rendered with ``add_generation_prompt=True`` and *full* is the whole
-    pair rendered with ``add_generation_prompt=False``. Raises ``ValueError`` if the chat
-    template doesn't compose that way (i.e. *full* doesn't start with *prompt*) — this
-    would mean the prompt/completion boundary can't be trusted for masking.
-    """
-    kwargs: dict[str, Any] = {"tokenize": False, "enable_thinking": enable_thinking}
-    try:
-        prompt = tokenizer.apply_chat_template(list(messages[:1]), add_generation_prompt=True, **kwargs)
-        full = tokenizer.apply_chat_template(list(messages), add_generation_prompt=False, **kwargs)
-    except TypeError:  # older tokenizers don't accept enable_thinking
-        kwargs.pop("enable_thinking")
-        prompt = tokenizer.apply_chat_template(list(messages[:1]), add_generation_prompt=True, **kwargs)
-        full = tokenizer.apply_chat_template(list(messages), add_generation_prompt=False, **kwargs)
-    if not full.startswith(prompt):
-        raise ValueError(
-            "Rendered prompt is not a prefix of the full rendered conversation; this "
-            "tokenizer's chat template does not compose the way completion-only masking "
-            "requires. Inspect tokenizer.chat_template, or fall back to "
-            "make_formatting_func() (which trains on the full sequence, unmasked)."
-        )
-    return prompt, full[len(prompt) :]
-
-
-def tokenize_with_masked_prompt(
-    tokenizer, prompt: str, completion: str, *, max_length: int
-) -> dict[str, list[int]] | None:
-    """Tokenize ``prompt + completion`` and mask the prompt span out of ``labels``.
-
-    Returns ``{"input_ids", "attention_mask", "labels"}`` (labels ``-100`` over the prompt
-    span), or ``None`` if truncation to *max_length* would eat into or past the prompt,
-    leaving nothing for the model to learn from.
-    """
-    prompt_len = len(tokenizer(prompt, add_special_tokens=False)["input_ids"])
-    full_ids = tokenizer(
-        prompt + completion, add_special_tokens=False, truncation=True, max_length=max_length
-    )["input_ids"]
-    if prompt_len >= len(full_ids):
-        return None
-    labels = list(full_ids)
-    labels[:prompt_len] = [-100] * prompt_len
-    return {"input_ids": full_ids, "attention_mask": [1] * len(full_ids), "labels": labels}
-
-
 @dataclass
 class PromptMaskedCollator:
     """Pads pre-tokenized ``{"input_ids", "attention_mask", "labels"}`` rows to the batch
@@ -199,6 +153,10 @@ class PromptMaskedCollator:
     pad_token_id: int
 
     def __call__(self, examples: Sequence[dict[str, list[int]]]) -> dict[str, torch.Tensor]:
+        if self.pad_token_id is None:
+            raise ValueError("pad_token_id must be set before training.")
+        if not examples:
+            raise ValueError("Cannot collate an empty batch.")
         max_len = max(len(ex["input_ids"]) for ex in examples)
         input_ids, attention_mask, labels = [], [], []
         for ex in examples:
@@ -238,7 +196,7 @@ class StratifiedSFTTrainer(SFTTrainer):
         }
         if self.args.dataloader_num_workers > 0:
             kwargs["prefetch_factor"] = self.args.dataloader_prefetch_factor
-        return DataLoader(self.train_dataset, **kwargs)
+        return self.accelerator.prepare(DataLoader(self.train_dataset, **kwargs))
 
 
 def _sft_config(phase: PhaseConfig, cfg: TwoPhaseConfig, output_dir: str) -> SFTConfig:
@@ -276,7 +234,7 @@ def _tokenize_records(records, types, tokenizer, cfg: TwoPhaseConfig):
     Rows a max_length truncation would leave with no completion left are dropped, keeping
     ``types`` in sync with the surviving rows."""
     rows, kept_types = [], []
-    for rec, t in zip(records, types):
+    for rec, t in zip(records, types, strict=True):
         prompt, completion = render_prompt_completion(
             tokenizer, rec["messages"], enable_thinking=cfg.enable_thinking
         )
@@ -296,7 +254,8 @@ def _run_phase(model, tokenizer, df, phase: PhaseConfig, cfg: TwoPhaseConfig, na
     if not rows:
         raise ValueError(f"Phase {name!r}: every record was truncated past its completion.")
     dataset = HFDataset.from_list(rows)
-    eff_batch = phase.per_device_train_batch_size * phase.gradient_accumulation_steps
+    world_size = max(1, int(os.environ.get("WORLD_SIZE", "1")))
+    eff_batch = phase.per_device_train_batch_size * phase.gradient_accumulation_steps * world_size
     order = build_stratified_index_order(types, eff_batch, cfg.seed)
     trainer = StratifiedSFTTrainer(
         model=model,
@@ -323,6 +282,11 @@ def train_two_phase(model, tokenizer, df: pd.DataFrame, cfg: TwoPhaseConfig):
     the trained ``model``. Loss is computed only over each example's assistant turn (the
     ``<think>...</think>\\boxed{...}`` span); see :func:`render_prompt_completion`.
     """
+    if tokenizer.pad_token_id is None:
+        raise ValueError(
+            "tokenizer.pad_token_id is None; set tokenizer.pad_token (usually to "
+            "tokenizer.eos_token) before training."
+        )
     phase1_df, phase2_df = two_phase_split(df, cfg.hard_types, seed=cfg.seed)
     _run_phase(model, tokenizer, phase1_df, cfg.phase1, cfg, "phase1")
     _run_phase(model, tokenizer, phase2_df, cfg.phase2, cfg, "phase2")

@@ -19,7 +19,7 @@ Everything goes through tracedistill's public API (``build_records``, ``two_phas
 ``render_prompt_completion``, ``tokenize_with_masked_prompt``, ``train_two_phase``), so this
 doubles as a usage example.
 
-Reproduce (~1h on one RTX 4080):
+Reproduce (~45 min on one RTX 4080):
     pip install -e .[train] datasets
     python examples/gsm8k_trace_distillation.py            # full run
     python examples/gsm8k_trace_distillation.py --smoke    # tiny, ~2 min sanity run
@@ -28,16 +28,23 @@ Reproduce (~1h on one RTX 4080):
 from __future__ import annotations
 
 import argparse
+import gc
+import hashlib
+import importlib.metadata
 import json
 import os
+import platform
 import re
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
 
 import pandas as pd
 import torch
 from datasets import Dataset as HFDataset
 from datasets import load_dataset
 from peft import LoraConfig, get_peft_model
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
 from trl import SFTConfig, SFTTrainer
 
 import tracedistill as td
@@ -103,57 +110,85 @@ def load_gsm8k_df(split: str, limit: int | None, seed: int) -> pd.DataFrame:
 
 
 # -------------------------------------------------------------------------- model io
-def fresh_model_and_tokenizer():
+def fresh_model_and_tokenizer(seed: int):
+    set_seed(seed)
     tok = AutoTokenizer.from_pretrained(MODEL)
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
+    tok.padding_side = "left"
     model = AutoModelForCausalLM.from_pretrained(MODEL, dtype=torch.bfloat16).to("cuda")
     return model, tok
 
 
 def attach_lora(model, seed):
+    set_seed(seed)
     targets = td.target_modules_from_model(model) or td.DEFAULT_TARGET_MODULES
     return get_peft_model(
         model,
         LoraConfig(
-            r=32, lora_alpha=32, lora_dropout=0.0,
-            target_modules=targets, bias="none", task_type="CAUSAL_LM",
+            r=32,
+            lora_alpha=32,
+            lora_dropout=0.0,
+            target_modules=targets,
+            bias="none",
+            task_type="CAUSAL_LM",
         ),
     )
 
 
 # ----------------------------------------------------------------------------- eval
 @torch.no_grad()
-def evaluate(model, tok, test_df: pd.DataFrame, max_new_tokens: int) -> dict:
+def evaluate(
+    model,
+    tok,
+    test_df: pd.DataFrame,
+    max_new_tokens: int,
+    batch_size: int,
+) -> dict:
     model.eval()
     correct = parsed = 0
     by_type_total: dict[str, int] = {}
     by_type_correct: dict[str, int] = {}
     n_total = len(test_df)
-    for i, (_, row) in enumerate(test_df.iterrows()):
-        if i % 25 == 0:
-            print(f"  eval {i}/{n_total} ...", flush=True)  # the base model rarely emits EOS, so each greedy decode runs the full budget
-        messages = [{"role": "user", "content": str(row["prompt"]) + td.DEFAULT_PROMPT_SUFFIX}]
-        text = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        inputs = tok(text, return_tensors="pt").to(model.device)
-        out = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False,
-                             pad_token_id=tok.pad_token_id)
-        gen = tok.decode(out[0, inputs["input_ids"].shape[1]:], skip_special_tokens=True)
-        boxes = _BOXED.findall(gen)
-        t = str(row["type"])
-        by_type_total[t] = by_type_total.get(t, 0) + 1
-        if boxes:
-            parsed += 1
-            pred, gold = _num(boxes[-1]), _num(str(row["answer"]))
-            if pred is not None and gold is not None and abs(pred - gold) < 1e-2:
-                correct += 1
-                by_type_correct[t] = by_type_correct.get(t, 0) + 1
+    for start in range(0, n_total, batch_size):
+        batch = test_df.iloc[start : start + batch_size]
+        print(f"  eval {start}/{n_total} ...", flush=True)
+        texts = []
+        for prompt in batch["prompt"]:
+            messages = [{"role": "user", "content": str(prompt) + td.DEFAULT_PROMPT_SUFFIX}]
+            texts.append(
+                tok.apply_chat_template(
+                    messages,
+                    tokenize=False,
+                    add_generation_prompt=True,
+                )
+            )
+        inputs = tok(texts, return_tensors="pt", padding=True).to(model.device)
+        out = model.generate(
+            **inputs, max_new_tokens=max_new_tokens, do_sample=False, pad_token_id=tok.pad_token_id
+        )
+        generated = tok.batch_decode(
+            out[:, inputs["input_ids"].shape[1] :],
+            skip_special_tokens=True,
+        )
+        for (_, row), text in zip(batch.iterrows(), generated, strict=True):
+            boxes = _BOXED.findall(text)
+            problem_type = str(row["type"])
+            by_type_total[problem_type] = by_type_total.get(problem_type, 0) + 1
+            if boxes:
+                parsed += 1
+                pred, gold = _num(boxes[-1]), _num(str(row["answer"]))
+                if pred is not None and gold is not None and abs(pred - gold) < 1e-2:
+                    correct += 1
+                    by_type_correct[problem_type] = by_type_correct.get(problem_type, 0) + 1
     n = len(test_df)
     return {
         "accuracy": correct / n,
         "parse_rate": parsed / n,
         "n": n,
-        "by_type_acc": {t: by_type_correct.get(t, 0) / by_type_total[t] for t in sorted(by_type_total)},
+        "by_type_acc": {
+            t: by_type_correct.get(t, 0) / by_type_total[t] for t in sorted(by_type_total)
+        },
     }
 
 
@@ -170,25 +205,92 @@ def _sft(model, tok, records, lr, epochs, bs, out):
             rows.append(row)
     ds = HFDataset.from_list(rows)
     args = SFTConfig(
-        output_dir=out, num_train_epochs=epochs, per_device_train_batch_size=bs,
-        gradient_accumulation_steps=2, learning_rate=lr, lr_scheduler_type="linear",
-        warmup_steps=0, max_length=1024, bf16=True, logging_steps=25, save_strategy="no",
-        report_to="none", packing=False, remove_unused_columns=False, dataloader_num_workers=0,
-        neftune_noise_alpha=5.0, max_grad_norm=1e9,
+        output_dir=out,
+        num_train_epochs=epochs,
+        per_device_train_batch_size=bs,
+        gradient_accumulation_steps=2,
+        learning_rate=lr,
+        lr_scheduler_type="linear",
+        warmup_steps=0,
+        max_length=1024,
+        bf16=True,
+        logging_steps=25,
+        save_strategy="no",
+        report_to="none",
+        packing=False,
+        remove_unused_columns=False,
+        dataloader_num_workers=0,
+        neftune_noise_alpha=5.0,
+        max_grad_norm=1e9,
     )
-    SFTTrainer(model=model, args=args, train_dataset=ds, processing_class=tok,
-               data_collator=PromptMaskedCollator(pad_token_id=tok.pad_token_id)).train()
+    SFTTrainer(
+        model=model,
+        args=args,
+        train_dataset=ds,
+        processing_class=tok,
+        data_collator=PromptMaskedCollator(pad_token_id=tok.pad_token_id),
+    ).train()
 
 
 def answer_only_records(df) -> list[dict]:
     """Same boxed format, but with NO reasoning trace between the <think> tags."""
     recs = []
     for _, row in df.iterrows():
-        recs.append({"messages": [
-            {"role": "user", "content": str(row["prompt"]) + td.DEFAULT_PROMPT_SUFFIX},
-            {"role": "assistant", "content": f"</think>\n\\boxed{{{row['answer']}}}"},
-        ]})
+        recs.append(
+            {
+                "messages": [
+                    {"role": "user", "content": str(row["prompt"]) + td.DEFAULT_PROMPT_SUFFIX},
+                    {"role": "assistant", "content": f"</think>\n\\boxed{{{row['answer']}}}"},
+                ]
+            }
+        )
     return recs
+
+
+def _git_commit() -> str | None:
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip() or None
+
+
+def _data_fingerprint(df: pd.DataFrame) -> str:
+    payload = df[["prompt", "generated_cot", "answer", "type"]].to_json(
+        orient="records",
+        force_ascii=False,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _environment() -> dict:
+    packages = {}
+    for name in ("tracedistill", "torch", "transformers", "trl", "peft", "datasets"):
+        try:
+            packages[name] = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            packages[name] = None
+    return {
+        "python": platform.python_version(),
+        "platform": platform.platform(),
+        "packages": packages,
+        "cuda": torch.version.cuda,
+        "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+    }
+
+
+def _write_metrics(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def _release_cuda_memory() -> None:
+    gc.collect()
+    torch.cuda.empty_cache()
 
 
 # ------------------------------------------------------------------------------- main
@@ -199,63 +301,108 @@ def main():
     ap.add_argument("--test-size", type=int, default=200)
     ap.add_argument("--epochs", type=int, default=3)
     ap.add_argument("--max-new-tokens", type=int, default=320)
+    ap.add_argument("--eval-batch-size", type=int, default=8)
     ap.add_argument("--out", default="output/gsm8k")
     ap.add_argument("--model", default=MODEL, help="base model id (default: a non-instruct base)")
     ap.add_argument("--smoke", action="store_true", help="tiny end-to-end sanity run")
     args = ap.parse_args()
     MODEL = args.model
+    if not torch.cuda.is_available():
+        raise RuntimeError("This benchmark requires a CUDA GPU.")
     if args.smoke:
         args.train_size, args.test_size, args.epochs, args.max_new_tokens = 60, 20, 1, 200
+        if args.out == "output/gsm8k":
+            args.out = "output/gsm8k-smoke"
     os.makedirs(args.out, exist_ok=True)
     seed = 42
+    set_seed(seed)
 
     train_df = load_gsm8k_df("train", args.train_size, seed)
     test_df = load_gsm8k_df("test", args.test_size, seed)
     hard_types = ["steps_ge5"]
-    print(f"train={len(train_df)} test={len(test_df)} | types={dict(train_df['type'].value_counts())}")
+    print(
+        f"train={len(train_df)} test={len(test_df)} | types={dict(train_df['type'].value_counts())}"
+    )
 
-    results: dict[str, dict] = {}
+    metrics_path = Path(args.out) / "metrics.json"
+    report = {
+        "schema_version": 1,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "git_commit": _git_commit(),
+        "config": vars(args),
+        "seed": seed,
+        "data": {
+            "dataset": "openai/gsm8k",
+            "train_fingerprint": _data_fingerprint(train_df),
+            "test_fingerprint": _data_fingerprint(test_df),
+        },
+        "environment": _environment(),
+        "results": {},
+    }
+    results: dict[str, dict] = report["results"]
 
     # Arm 1 — zero-shot
-    model, tok = fresh_model_and_tokenizer()
-    results["zero_shot"] = evaluate(model, tok, test_df, args.max_new_tokens)
-    del model; torch.cuda.empty_cache()
+    model, tok = fresh_model_and_tokenizer(seed)
+    results["zero_shot"] = evaluate(model, tok, test_df, args.max_new_tokens, args.eval_batch_size)
+    _write_metrics(metrics_path, report)
+    del model, tok
+    _release_cuda_memory()
     print("zero_shot:", results["zero_shot"])
 
     # Arm 2 — answer-only SFT (the failure mode)
-    model, tok = fresh_model_and_tokenizer()
+    model, tok = fresh_model_and_tokenizer(seed)
     model = attach_lora(model, seed)
     _sft(model, tok, answer_only_records(train_df), 2e-4, args.epochs, 4, f"{args.out}/answer_only")
-    results["answer_only_sft"] = evaluate(model, tok, test_df, args.max_new_tokens)
-    del model; torch.cuda.empty_cache()
+    results["answer_only_sft"] = evaluate(
+        model, tok, test_df, args.max_new_tokens, args.eval_batch_size
+    )
+    _write_metrics(metrics_path, report)
+    del model, tok
+    _release_cuda_memory()
     print("answer_only_sft:", results["answer_only_sft"])
 
     # Arm 3 — trace-distill, single phase (the format contract over teacher CoT)
-    model, tok = fresh_model_and_tokenizer()
+    model, tok = fresh_model_and_tokenizer(seed)
     model = attach_lora(model, seed)
     records, _ = td.build_records(train_df)
     _sft(model, tok, records, 2e-4, args.epochs, 4, f"{args.out}/trace_1phase")
-    results["trace_distill_1phase"] = evaluate(model, tok, test_df, args.max_new_tokens)
-    del model; torch.cuda.empty_cache()
+    results["trace_distill_1phase"] = evaluate(
+        model, tok, test_df, args.max_new_tokens, args.eval_batch_size
+    )
+    _write_metrics(metrics_path, report)
+    del model, tok
+    _release_cuda_memory()
     print("trace_distill_1phase:", results["trace_distill_1phase"])
 
     # Arm 4 — trace-distill, two-phase Train -> Nudge (via the library)
-    model, tok = fresh_model_and_tokenizer()
+    model, tok = fresh_model_and_tokenizer(seed)
     model = attach_lora(model, seed)
     cfg = TwoPhaseConfig(
-        hard_types=hard_types, output_dir=f"{args.out}/trace_2phase", max_length=1024, seed=seed,
-        phase1=PhaseConfig.train(num_train_epochs=args.epochs, per_device_train_batch_size=4),
-        phase2=PhaseConfig.nudge(num_train_epochs=1, per_device_train_batch_size=4),
+        hard_types=hard_types,
+        output_dir=f"{args.out}/trace_2phase",
+        max_length=1024,
+        seed=seed,
+        phase1=PhaseConfig.train(
+            num_train_epochs=args.epochs,
+            per_device_train_batch_size=4,
+            gradient_accumulation_steps=2,
+        ),
+        phase2=PhaseConfig.nudge(
+            num_train_epochs=1,
+            per_device_train_batch_size=4,
+            gradient_accumulation_steps=2,
+        ),
     )
     train_two_phase(model, tok, train_df, cfg)
-    results["trace_distill_2phase"] = evaluate(model, tok, test_df, args.max_new_tokens)
-    del model; torch.cuda.empty_cache()
+    results["trace_distill_2phase"] = evaluate(
+        model, tok, test_df, args.max_new_tokens, args.eval_batch_size
+    )
+    _write_metrics(metrics_path, report)
+    del model, tok
+    _release_cuda_memory()
     print("trace_distill_2phase:", results["trace_distill_2phase"])
 
     # ---- report ----
-    with open(f"{args.out}/metrics.json", "w") as f:
-        json.dump({"config": vars(args), "results": results}, f, indent=2)
-
     order = ["zero_shot", "answer_only_sft", "trace_distill_1phase", "trace_distill_2phase"]
     label = {
         "zero_shot": "zero-shot (no training)",
@@ -267,8 +414,8 @@ def main():
     print("|---|--:|--:|")
     for k in order:
         r = results[k]
-        print(f"| {label[k]} | {r['accuracy']*100:.1f}% | {r['parse_rate']*100:.1f}% |")
-    print(f"\nWrote {args.out}/metrics.json")
+        print(f"| {label[k]} | {r['accuracy'] * 100:.1f}% | {r['parse_rate'] * 100:.1f}% |")
+    print(f"\nWrote {metrics_path}")
 
 
 if __name__ == "__main__":
