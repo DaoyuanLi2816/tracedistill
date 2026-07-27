@@ -44,7 +44,7 @@ train = [
     "transformers>=4.46,<6",
     "trl>=0.12,<2",
     "peft>=0.13,<1",
-    "datasets>=2.20,<5",
+    "datasets>=2.20,<6",
     "accelerate>=1.0,<2",
 ]
 test = [
