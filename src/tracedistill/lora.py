@@ -13,7 +13,7 @@ Standard library only — no torch — so it can be unit-tested without loading 
 
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 __all__ = [
     "ATTENTION_TARGETS",
@@ -30,9 +30,14 @@ MLP_TARGETS = ("gate_proj", "up_proj", "down_proj")
 
 #: The exact list used by the silver-medal solution (attention + Mamba + up/down MLP).
 DEFAULT_TARGET_MODULES = [
-    "q_proj", "k_proj", "v_proj", "o_proj",
-    "in_proj", "out_proj",
-    "up_proj", "down_proj",
+    "q_proj",
+    "k_proj",
+    "v_proj",
+    "o_proj",
+    "in_proj",
+    "out_proj",
+    "up_proj",
+    "down_proj",
 ]
 
 

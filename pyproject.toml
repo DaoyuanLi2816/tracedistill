@@ -1,14 +1,14 @@
 [build-system]
-requires = ["setuptools>=64"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "tracedistill"
-version = "0.1.1"
+version = "0.2.0"
 description = "Distill teacher chains-of-thought into a LoRA adapter via a strict boxed-answer format contract and a two-phase Train→Nudge schedule (silver-medal NVIDIA Nemotron reasoning recipe)."
 readme = "README.md"
-requires-python = ">=3.9"
-license = { text = "MIT" }
+requires-python = ">=3.10"
+license = "MIT"
 authors = [{ name = "Daoyuan Li" }]
 keywords = [
     "lora",
@@ -23,9 +23,7 @@ keywords = [
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -34,29 +32,37 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    "numpy",
-    "pandas",
-    "pyyaml",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
 # Heavy ML stack — only needed to actually train (the core import stays light).
 train = [
-    "torch",
-    "transformers>=4.46",
-    "trl>=0.12",
-    "peft",
-    "datasets",
-    "accelerate",
+    "torch>=2.4",
+    "transformers>=4.46,<6",
+    "trl>=0.12,<2",
+    "peft>=0.13,<1",
+    "datasets>=2.20,<5",
+    "accelerate>=1.0,<2",
 ]
 test = [
-    "pytest",
-    "pandas",
+    "pytest>=8",
+    "pytest-cov>=5",
+]
+dev = [
+    "build>=1.2",
+    "ruff>=0.11",
+    "twine>=6",
 ]
 
 [project.urls]
 Homepage = "https://github.com/DaoyuanLi2816/tracedistill"
+Documentation = "https://github.com/DaoyuanLi2816/tracedistill/tree/main/docs"
+Changelog = "https://github.com/DaoyuanLi2816/tracedistill/blob/main/CHANGELOG.md"
 Issues = "https://github.com/DaoyuanLi2816/tracedistill/issues"
+Source = "https://github.com/DaoyuanLi2816/tracedistill"
 
 [project.scripts]
 tracedistill = "tracedistill.run:main"
@@ -66,3 +72,15 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+extend-exclude = [
+    "competition/training.py",
+    "tests/reference_impl.py",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

@@ -29,8 +29,10 @@ Example:
 
 from __future__ import annotations
 
+import math
 import re
-from typing import Any, Iterable, Mapping
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 __all__ = [
     "DEFAULT_PROMPT_SUFFIX",
@@ -42,11 +44,16 @@ __all__ = [
 #: The instruction the competition grader appends to every prompt. Training reuses it
 #: verbatim so the training distribution matches the eval distribution.
 DEFAULT_PROMPT_SUFFIX = (
-    "\nPlease put your final answer inside `\\boxed{}`. "
-    "For example: `\\boxed{your answer}`"
+    "\nPlease put your final answer inside `\\boxed{}`. For example: `\\boxed{your answer}`"
 )
 
 _BOXED_START_RE = re.compile(r"\\boxed\{")
+
+
+def _missing(value: Any) -> bool:
+    if value is None:
+        return True
+    return isinstance(value, float) and math.isnan(value)
 
 
 def strip_boxed(text: str) -> str:
@@ -101,10 +108,14 @@ def build_record(
     ``<think>`` is expected to be inserted by the chat template (see
     :func:`render_chat`), keeping this function tokenizer-agnostic.
     """
+    if _missing(cot):
+        return None
     cot = str(cot)
     if not cot or cot == "nan" or len(cot.strip()) < min_cot_len:
         return None
     cot_cleaned = strip_boxed(cot).rstrip()
+    if len(cot_cleaned.strip()) < min_cot_len:
+        return None
     user_content = str(prompt) + prompt_suffix
     asst_content = cot_cleaned + f"\n</think>\n\\boxed{{{str(answer)}}}"
     return {
@@ -116,7 +127,7 @@ def build_record(
 
 
 def build_records(
-    rows: Iterable[Mapping[str, Any]] | "pandas.DataFrame",  # noqa: F821
+    rows: Iterable[Mapping[str, Any]] | pandas.DataFrame,  # noqa: F821
     *,
     prompt_key: str = "prompt",
     cot_key: str = "generated_cot",

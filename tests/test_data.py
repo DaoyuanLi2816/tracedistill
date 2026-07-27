@@ -10,13 +10,19 @@ def _make_df():
     rows = []
     # hard types (rare-ish) + easy types (plentiful)
     for i in range(20):
-        rows.append({"prompt": f"h{i}", "generated_cot": "x", "answer": i, "type": "cryptarithm_deduce"})
+        rows.append(
+            {"prompt": f"h{i}", "generated_cot": "x", "answer": i, "type": "cryptarithm_deduce"}
+        )
     for i in range(15):
-        rows.append({"prompt": f"g{i}", "generated_cot": "x", "answer": i, "type": "cryptarithm_guess"})
+        rows.append(
+            {"prompt": f"g{i}", "generated_cot": "x", "answer": i, "type": "cryptarithm_guess"}
+        )
     for i in range(80):
         rows.append({"prompt": f"e{i}", "generated_cot": "x", "answer": i, "type": "gravity"})
     for i in range(60):
-        rows.append({"prompt": f"u{i}", "generated_cot": "x", "answer": i, "type": "unit_conversion"})
+        rows.append(
+            {"prompt": f"u{i}", "generated_cot": "x", "answer": i, "type": "unit_conversion"}
+        )
     return pd.DataFrame(rows)
 
 
@@ -61,11 +67,19 @@ def test_raises_when_no_hard_rows():
         two_phase_split(df, {"nonexistent_type"}, seed=0)
 
 
+def test_rejects_empty_hard_types_and_missing_type_column():
+    df = _make_df()
+    with pytest.raises(ValueError, match="hard_types"):
+        two_phase_split(df, [], seed=0)
+    with pytest.raises(ValueError, match="type column"):
+        two_phase_split(df.drop(columns=["type"]), HARD, seed=0)
+
+
 def test_load_cot_csv_validates_columns(tmp_path):
     good = tmp_path / "good.csv"
-    pd.DataFrame(
-        [{"prompt": "p", "generated_cot": "c", "answer": 1, "type": "t"}]
-    ).to_csv(good, index=False)
+    pd.DataFrame([{"prompt": "p", "generated_cot": "c", "answer": 1, "type": "t"}]).to_csv(
+        good, index=False
+    )
     assert len(load_cot_csv(str(good))) == 1
 
     bad = tmp_path / "bad.csv"

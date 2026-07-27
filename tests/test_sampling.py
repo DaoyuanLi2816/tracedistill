@@ -1,7 +1,6 @@
 """Golden + invariant tests for the stratified sampler."""
 
 import random
-from collections import Counter
 
 import pytest
 import reference_impl as ref
@@ -45,7 +44,7 @@ def test_deterministic():
 def test_batches_are_type_balanced():
     # With equal-sized types and a batch that's a multiple of the type count, each batch
     # should contain (close to) one of each type — the whole point of the sampler.
-    labels = (["a", "b", "c", "d"] * 25)  # 100 labels, 25 each
+    labels = ["a", "b", "c", "d"] * 25  # 100 labels, 25 each
     rng = random.Random(0)
     rng.shuffle(labels)
     batch_size = 4

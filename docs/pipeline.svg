@@ -43,7 +43,7 @@
 
   <!-- (2) split -->
   <rect x="110" y="240" width="740" height="170" rx="16" fill="#F8FAFC" stroke="#CBD5E1"/>
-  <text x="130" y="268" font-size="14" font-weight="700" fill="#0F172A">② Split · into two non-overlapping sets</text>
+  <text x="130" y="268" font-size="14" font-weight="700" fill="#0F172A">② Split · shared hard rows, disjoint easy rows</text>
   <text x="130" y="290" font-size="10.5" fill="#64748B" class="mono">HARD_TYPES = { cryptarithm_deduce, cryptarithm_guess, equation_numeric_guess } → rest are easy</text>
 
   <rect x="140" y="304" width="330" height="94" rx="12" fill="#FFFFFF" stroke="#CBD5E1"/>

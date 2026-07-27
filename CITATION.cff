@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use tracedistill, please cite this software."
+title: "tracedistill: Two-Phase LoRA Trace Distillation for Reasoning Models"
+type: software
+authors:
+  - family-names: Li
+    given-names: Daoyuan
+repository-code: "https://github.com/DaoyuanLi2816/tracedistill"
+url: "https://pypi.org/project/tracedistill/"
+license: MIT
+version: 0.2.0
+date-released: 2026-07-26
+keywords:
+  - reasoning
+  - trace distillation
+  - LoRA
+  - Mamba
+  - supervised fine-tuning

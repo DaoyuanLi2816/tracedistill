@@ -47,7 +47,7 @@ def _random_cot(rng: random.Random) -> str:
     if rng.random() < 0.6:
         body += f" \\boxed{{{rng.randint(0, 999)}}}"
     if rng.random() < 0.3:
-        body += f" and also \\boxed{{wrong-{rng.randint(0,9)}}} trailing"
+        body += f" and also \\boxed{{wrong-{rng.randint(0, 9)}}} trailing"
     if rng.random() < 0.3:
         body += "\n\n   "  # trailing whitespace to exercise rstrip
     return body

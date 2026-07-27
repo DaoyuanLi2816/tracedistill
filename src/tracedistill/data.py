@@ -3,14 +3,14 @@
 The canonical input is a table with four columns: ``prompt`` (the problem), a teacher
 ``generated_cot`` (the reasoning trace to distill), ``answer`` (the authoritative
 label), and ``type`` (a problem-family label used for stratification). :func:`load_cot_csv`
-reads such a table; :func:`two_phase_split` carves it into the two non-overlapping
-training sets the ``Train → Nudge`` schedule consumes.
+reads such a table; :func:`two_phase_split` reserves fresh easy examples for the second
+phase while intentionally keeping every hard example in both phases.
 """
 
 from __future__ import annotations
 
 import random
-from typing import Iterable
+from collections.abc import Iterable
 
 import pandas as pd
 
@@ -58,6 +58,12 @@ def two_phase_split(
     Deterministic given ``seed``.
     """
     hard_types = set(hard_types)
+    if type_key not in df.columns:
+        raise ValueError(f"DataFrame is missing type column {type_key!r}.")
+    if not hard_types:
+        raise ValueError("hard_types must contain at least one problem type.")
+    if df.empty:
+        raise ValueError("Cannot split an empty DataFrame.")
     if shuffle:
         df = df.sample(frac=1, random_state=seed).reset_index(drop=True)
 

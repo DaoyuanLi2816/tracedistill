@@ -6,7 +6,6 @@ from tracedistill.lora import (
     target_modules_from_model,
 )
 
-
 # A fake hybrid Mamba-2 + attention + MLP module-name set.
 HYBRID_NAMES = [
     "model.layers.0.mixer.in_proj",
@@ -70,6 +69,12 @@ def test_target_modules_from_model():
 def test_default_target_modules_constant():
     # The shipped default mirrors the silver-medal solution's exact list.
     assert DEFAULT_TARGET_MODULES == [
-        "q_proj", "k_proj", "v_proj", "o_proj",
-        "in_proj", "out_proj", "up_proj", "down_proj",
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        "in_proj",
+        "out_proj",
+        "up_proj",
+        "down_proj",
     ]

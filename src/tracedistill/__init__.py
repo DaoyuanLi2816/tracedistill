@@ -24,9 +24,10 @@ from .lora import (
     architecture_aware_targets,
     target_modules_from_model,
 )
+from .masking import render_prompt_completion, tokenize_with_masked_prompt
 from .sampling import PrecomputedOrderSampler, build_stratified_index_order
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 
 # Heavy (torch/trl) symbols are imported lazily so `import tracedistill` works with only
 # the light core installed.
@@ -69,6 +70,9 @@ __all__ = [
     "ATTENTION_TARGETS",
     "MAMBA_TARGETS",
     "MLP_TARGETS",
+    # completion-only objective
+    "render_prompt_completion",
+    "tokenize_with_masked_prompt",
     # training (lazy, needs the [train] extra)
     "PhaseConfig",
     "TwoPhaseConfig",

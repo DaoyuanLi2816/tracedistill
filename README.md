@@ -63,8 +63,9 @@ pip install tracedistill            # light core: numpy / pandas / pyyaml
 pip install "tracedistill[train]"   # + torch / transformers / trl / peft / datasets to train
 ```
 
-The core (`build_records`, the stratified order, the split, target selection, config) is
-**torch-free** — it imports and unit-tests without a GPU stack.
+The core (`build_records`, completion-only masking, stratified ordering, data splitting,
+target selection, and config validation) is **torch-free** — it imports and unit-tests
+without a GPU stack.
 
 ## 60 seconds
 
@@ -76,7 +77,7 @@ records, types = td.build_records(df)      # the <think>…</think>\boxed{} form
 order = td.build_stratified_index_order(types, batch_size=8, seed=42)  # type-balanced order
 targets = td.target_modules_from_model(model)   # attention + Mamba SSM + MLP, auto-detected
 
-# The two non-overlapping training sets for Train → Nudge:
+# Hard rows intentionally appear in both phases; Phase 2's easy rows are a fresh reserve.
 phase1_df, phase2_df = td.two_phase_split(df, hard_types=["cryptarithm_deduce"], seed=42)
 ```
 
@@ -98,6 +99,7 @@ One YAML config drives an end-to-end run (load base model → architecture-aware
 ```bash
 tracedistill --cfg examples/configs/quickstart.yaml             # small single-GPU
 tracedistill --cfg examples/configs/reproduce_competition.yaml  # the medal setup (Kaggle)
+tracedistill --cfg examples/configs/quickstart.yaml --dry-run   # validate data/split, no GPU
 ```
 
 ## Measured: does distilling the *trace* actually help? (GSM8K, one RTX 4080)
@@ -179,8 +181,9 @@ full methodology, and [`competition/`](competition/) for the verbatim solution.
 - [`competition/`](competition/) — the original silver-medal solution, **unmodified**.
 - [`tests/`](tests/) — **golden tests**: `tests/reference_impl.py` holds verbatim copies of
   the competition's `build_records` / `build_stratified_index_order`, and the suite asserts
-  `tracedistill` reproduces them **byte-for-byte** over hundreds of fuzzed cases. 48 tests,
-  torch-free, run in well under a second.
+  `tracedistill` reproduces them **byte-for-byte** over hundreds of fuzzed cases. The 50+
+  light-core tests run in well under a second; the optional training layer has a separate
+  compatibility job.
 
 The official Kaggle **Certificate of Achievement** — Silver Medalist, 65th of 4182 teams:
 

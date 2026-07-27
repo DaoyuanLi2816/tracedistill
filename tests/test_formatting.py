@@ -4,10 +4,10 @@ import random
 
 import pandas as pd
 import reference_impl as ref
+from conftest import random_dataframe
 
 import tracedistill as td
 from tracedistill.formatting import build_record
-from conftest import random_dataframe
 
 
 def test_default_suffix_matches_competition():
@@ -52,6 +52,7 @@ def test_build_record_drops_unusable_cot():
     assert build_record("Q", "   ", 1) is None  # whitespace-only, < min_cot_len after strip
     assert build_record("Q", "abc", 1) is None  # 3 chars < default min_cot_len=5
     assert build_record("Q", "abcde", 1) is not None
+    assert build_record("Q", "\\boxed{1}", 1) is None
 
 
 def test_build_record_custom_suffix_and_min_len():

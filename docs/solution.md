@@ -166,7 +166,7 @@ TARGET_MODULES = ["q_proj","k_proj","v_proj","o_proj",
 
 The environment patches (3 cells) are pure engineering trench-work: installing the Triton wheel offline, **patching ptxas for the Blackwell GPU** (even monkey-patching it to lie about its version number as `'12.0'`), and installing `mamba_ssm` / `causal_conv1d` offline. Their very existence is a piece of information: **a new model (released only in 2025-12) + new hardware (Blackwell) + no internet access = whoever gets the environment running first wins at the starting line.**
 
-#### Phase 1: Data Split (into two non-overlapping sets)
+#### Phase 1: Data Split (shared hard rows, disjoint easy rows)
 
 ```python
 n = int(hard_df["type"].value_counts().min())   # the count of the scarcest of the three hard types
