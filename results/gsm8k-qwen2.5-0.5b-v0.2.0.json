@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-27T03:32:45.475768+00:00",
+  "git_commit": "804da3a8024647e2b0eca67d552013827d29560f",
+  "config": {
+    "train_size": 1200,
+    "test_size": 200,
+    "epochs": 3,
+    "max_new_tokens": 320,
+    "eval_batch_size": 8,
+    "out": "output\\gsm8k-v020-full",
+    "model": "Qwen/Qwen2.5-0.5B",
+    "smoke": false
+  },
+  "seed": 42,
+  "data": {
+    "dataset": "openai/gsm8k",
+    "train_fingerprint": "57ab2c52f2b63952e984c0c3e2ac81f86f9dc5948d42a4d7c3cb8d01c345b907",
+    "test_fingerprint": "b833536e9ead783fd9fdbed1a4c885ccfa9117920bb4dc8034b9f4b453a0f442"
+  },
+  "environment": {
+    "python": "3.10.11",
+    "platform": "Windows-10-10.0.22631-SP0",
+    "packages": {
+      "tracedistill": "0.2.0",
+      "torch": "2.11.0+cu128",
+      "transformers": "5.14.1",
+      "trl": "1.9.1",
+      "peft": "0.19.1",
+      "datasets": "4.8.5"
+    },
+    "cuda": "12.8",
+    "gpu": "NVIDIA GeForce RTX 4080"
+  },
+  "results": {
+    "zero_shot": {
+      "accuracy": 0.13,
+      "parse_rate": 0.33,
+      "n": 200,
+      "by_type_acc": {
+        "steps_3_4": 0.07920792079207921,
+        "steps_ge5": 0.06060606060606061,
+        "steps_le2": 0.24242424242424243
+      }
+    },
+    "answer_only_sft": {
+      "accuracy": 0.1,
+      "parse_rate": 1.0,
+      "n": 200,
+      "by_type_acc": {
+        "steps_3_4": 0.10891089108910891,
+        "steps_ge5": 0.030303030303030304,
+        "steps_le2": 0.12121212121212122
+      }
+    },
+    "trace_distill_1phase": {
+      "accuracy": 0.315,
+      "parse_rate": 0.995,
+      "n": 200,
+      "by_type_acc": {
+        "steps_3_4": 0.3069306930693069,
+        "steps_ge5": 0.030303030303030304,
+        "steps_le2": 0.4696969696969697
+      }
+    },
+    "trace_distill_2phase": {
+      "accuracy": 0.33,
+      "parse_rate": 0.99,
+      "n": 200,
+      "by_type_acc": {
+        "steps_3_4": 0.2871287128712871,
+        "steps_ge5": 0.12121212121212122,
+        "steps_le2": 0.5
+      }
+    }
+  }
+}

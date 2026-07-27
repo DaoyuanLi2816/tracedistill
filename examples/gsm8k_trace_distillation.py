@@ -19,7 +19,7 @@ Everything goes through tracedistill's public API (``build_records``, ``two_phas
 ``render_prompt_completion``, ``tokenize_with_masked_prompt``, ``train_two_phase``), so this
 doubles as a usage example.
 
-Reproduce (~1h on one RTX 4080):
+Reproduce (~45 min on one RTX 4080):
     pip install -e .[train] datasets
     python examples/gsm8k_trace_distillation.py            # full run
     python examples/gsm8k_trace_distillation.py --smoke    # tiny, ~2 min sanity run

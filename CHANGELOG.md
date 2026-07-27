@@ -16,7 +16,7 @@ All notable changes are documented here. Releases follow semantic versioning.
 
 ### Changed
 
-- The public GSM8K comparison was rerun after the completion-only objective fix.
+- The public GSM8K comparison was rerun under the completion-only objective.
 - Custom stratified DataLoaders are now prepared by Accelerate and account for
   distributed world size when constructing effective batches.
 - Configuration validation now rejects misspelled phase options before model loading.
@@ -25,7 +25,7 @@ All notable changes are documented here. Releases follow semantic versioning.
 
 ## [0.1.1] - 2026-07-11
 
-- Restricted SFT loss to the assistant completion.
+- Added assistant-completion-only training labels.
 - Fixed nested-brace handling in boxed answers.
 - Improved compatibility across Transformers and TRL versions.
 

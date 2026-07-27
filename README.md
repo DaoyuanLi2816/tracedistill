@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/DaoyuanLi2816/tracedistill/actions/workflows/ci.yml"><img src="https://github.com/DaoyuanLi2816/tracedistill/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://pypi.org/project/tracedistill/"><img src="https://img.shields.io/pypi/v/tracedistill" alt="PyPI"></a>
-  <img src="https://img.shields.io/badge/python-3.9+-blue" alt="Python">
+  <img src="https://img.shields.io/badge/python-3.10--3.13-blue" alt="Python 3.10 through 3.13">
   <img src="https://img.shields.io/badge/License-MIT-yellow" alt="License: MIT">
   <a href="https://www.kaggle.com/competitions/nvidia-nemotron-model-reasoning-challenge"><img src="https://img.shields.io/badge/Kaggle-Silver%20·%2065%2F4182%20(Top%201.6%25)-C0C0C0" alt="Kaggle Silver"></a>
 </p>
@@ -107,53 +107,43 @@ tracedistill --cfg examples/configs/quickstart.yaml --dry-run   # validate data/
 [`examples/gsm8k_trace_distillation.py`](examples/gsm8k_trace_distillation.py) runs four
 arms on a **base (non-instruct) Qwen2.5-0.5B + LoRA** through the public API and scores
 **boxed-answer accuracy** on held-out GSM8K (greedy, parse `\boxed{}` exactly like a
-grader). A *base* model is used on purpose: it's weak at the "reason then box" protocol
-zero-shot, so distilling a teacher trace has real room to help — the regime trace
-distillation is built for. The only difference between *answer-only SFT* and *trace-distill*
-is whether a reasoning trace sits between the `<think>` tags, so that gap isolates the value
-of distilling the trace.
+grader). Every trained arm uses completion-only labels: the prompt is excluded from the
+loss at the token boundary. The answer-only and one-phase trace arms use the same
+initialization and optimizer settings; the reasoning trace between the `<think>` tags is
+their only training-target difference.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/DaoyuanLi2816/tracedistill/main/docs/results.svg" alt="GSM8K results: trace distillation lifts a base model 9.5% to 35.0% (~3.7x); answer-only SFT, with no reasoning trace, drops to 3.5%" width="92%">
+  <img src="https://raw.githubusercontent.com/DaoyuanLi2816/tracedistill/main/docs/results.svg" alt="GSM8K results: trace distillation reaches 31.5% to 33.0% accuracy, versus 10.0% for answer-only SFT and 13.0% zero-shot" width="92%">
 </p>
 
 | arm | boxed accuracy | parse rate | hard-problem acc (≥5 steps) |
 |---|--:|--:|--:|
-| zero-shot (base, no training) | 9.5% | 30% | 0% |
-| answer-only SFT | **3.5%** | 100% | 0% |
-| **trace-distill, 1 phase** | 33.0% | 98.5% | **6.1%** |
-| **trace-distill, 2 phase (Train→Nudge)** | **35.0%** | 96.5% | **6.1%** |
+| zero-shot (base, no training) | 13.0% | 33.0% | 6.1% |
+| answer-only SFT | 10.0% | 100.0% | 3.0% |
+| **trace-distill, 1 phase** | **31.5%** | 99.5% | 3.0% |
+| **trace-distill, 2 phase (Train→Nudge)** | **33.0%** | 99.0% | **12.1%** |
 
-**Distil the trace, not the answer.** Trace distillation lifts the weak base from **9.5% →
-35.0% (≈3.7×)**. Answer-only SFT — the *same* boxed format but with **no reasoning trace** —
-instead *drops* to **3.5%** (it learns to always emit a `\boxed{}`, but having been taught to
-skip the reasoning, it just boxes wrong answers). The 10× gap between the two SFT arms (35.0%
-vs 3.5%) is purely the reasoning trace.
+**The trace is the signal.** With nearly identical parse rates, one-phase trace
+distillation beats answer-only SFT by **21.5 percentage points** (31.5% vs 10.0%). The
+two-phase recipe reaches **33.0%**, about **2.5×** the 13.0% zero-shot accuracy.
 
-**Distillation also fixes the format.** Zero-shot, the base emits a parseable `\boxed{}` only
-30% of the time; after distillation, ~97%. And ≥5-step hard problems go from **0% → 6.1%** —
-only the trace-distilled arms crack any at all.
+**Formatting and solving separate cleanly.** Answer-only SFT reaches a 100% parse rate but
+only 10.0% accuracy: learning to emit `\boxed{}` is not enough. Both trace arms retain
+~99% parse rates while tripling the answer-only accuracy.
 
-**The Nudge adds a little more.** Phase 2 edges 1-phase **33.0% → 35.0%**.
+**Nudge targets the tail.** The hard-focused second phase moves overall accuracy from
+31.5% to 33.0%, while ≥5-step accuracy rises from 3.0% to 12.1%. Because the two-phase
+arm also changes the data schedule, this is a recipe comparison rather than an isolated
+causal estimate of the Nudge step.
 
-**Honest caveat.** This is a 0.5B model on GSM8K, so the absolute numbers are modest; the
-result demonstrates the *relative* value of distilling the trace. It's the same recipe that
-took **silver** on the competition's harder, code-derived puzzles — where the fixed base
-likewise can't solve them zero-shot and the teacher trace encodes the procedure.
-
-**Provenance of these specific numbers.** They were captured with an earlier revision of
-this script's `SFTTrainer` call, before a later fix (see the git history of
-[`training.py`](src/tracedistill/training.py)) that restricts the SFT loss to the assistant
-turn only — the version used here also let some loss gradient fall on the user's question
-text, rather than purely on the `<think>…</think>\boxed{}` span being distilled. That
-applied identically to all three trained arms, so the relative story above (trace-distill
-≫ answer-only, 2-phase ≥ 1-phase) is expected to hold, but the absolute percentages haven't
-been re-measured since the fix and may shift on a re-run; treat them as directional rather
-than final.
+The complete run uses one seed and 200 held-out examples on a 0.5B model. Exact package
+versions, hardware, data fingerprints, commit, and per-bucket results are in the
+[machine-readable result](results/gsm8k-qwen2.5-0.5b-v0.2.0.json) and
+[reproducibility notes](docs/reproducibility.md).
 
 ```bash
 pip install "tracedistill[train]" datasets
-python examples/gsm8k_trace_distillation.py        # ~1h on one RTX 4080 (16 GB)
+python examples/gsm8k_trace_distillation.py        # ~45 min on one RTX 4080 (16 GB)
 ```
 
 ## The competition result
@@ -168,8 +158,9 @@ full methodology, and [`competition/`](competition/) for the verbatim solution.
 
 ## How it compares
 
-| | vanilla `SFTTrainer` | `tracedistill` |
+| | naive `formatting_func` SFT | `tracedistill` |
 |---|---|---|
+| Loss target | full rendered conversation | assistant completion only |
 | Target format | freeform text | strict `<think>…</think>\boxed{}` contract |
 | Answer source | as written in the trace | decoupled — official label re-boxed |
 | Schedule | single pass | two-phase `Train → Nudge` |
