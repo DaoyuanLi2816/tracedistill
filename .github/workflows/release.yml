@@ -57,6 +57,6 @@ jobs:
         with:
           name: dist
           path: dist/
-      - run: gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+      - run: gh release upload "$GITHUB_REF_NAME" dist/* --clobber --repo "$GITHUB_REPOSITORY"
         env:
           GH_TOKEN: ${{ github.token }}
